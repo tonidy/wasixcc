@@ -44,6 +44,14 @@ static CLANG_FLAGS_WITH_ARGS: LazyLock<HashSet<&str>> = LazyLock::new(|| {
 static WASM_LD_FLAGS_WITH_ARGS: LazyLock<HashSet<&str>> =
     LazyLock::new(|| ["-o", "-mllvm", "-L", "-l", "-m", "-O", "-y", "-z"].into());
 
+static WASM_OPT_ENABLED_FEATURES: &[&str] = &[
+    "--enable-threads",
+    "--enable-mutable-globals",
+    "--enable-bulk-memory",
+    "--enable-bulk-memory-opt",
+    "--enable-exception-handling",
+];
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ModuleKind {
     StaticMain,
@@ -131,6 +139,7 @@ pub(crate) fn run(args: Vec<String>, mut user_settings: UserSettings, run_cxx: b
             "clang"
         }));
         command.args(original_args);
+        command.args([OsStr::new("--target=wasm32-wasi")]);
         return run_command(command);
     }
 
@@ -446,7 +455,7 @@ fn run_wasm_opt(state: &State) -> Result<()> {
     let mut command = Command::new("wasm-opt");
 
     if state.user_settings.wasm_exceptions {
-        command.arg("--experimental-new-eh");
+        command.arg("--emit-exnref");
     }
 
     match state.build_settings.opt_level {
@@ -485,6 +494,10 @@ fn run_wasm_opt(state: &State) -> Result<()> {
             command.arg("-g");
         }
     }
+
+    command.arg("--no-validation");
+
+    command.args(WASM_OPT_ENABLED_FEATURES);
 
     let output_path = output_path(state);
     command.arg(output_path);
