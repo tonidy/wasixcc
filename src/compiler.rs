@@ -263,6 +263,8 @@ fn compile_inputs(state: &mut State) -> Result<()> {
 
     if state.user_settings.wasm_exceptions {
         command_args.push(OsStr::new("-fwasm-exceptions"));
+        command_args.push(OsStr::new("-mllvm"));
+        command_args.push(OsStr::new("--wasm-enable-sjlj"));
     }
 
     if state.user_settings.module_kind().requires_pic() || state.user_settings.pic {
@@ -458,26 +460,33 @@ fn run_wasm_opt(state: &State) -> Result<()> {
         command.arg("--emit-exnref");
     }
 
-    match state.build_settings.opt_level {
-        // -O0 does nothing, no need to specify it
-        OptLevel::O0 => (),
-        OptLevel::O1 => {
-            command.arg("-O1");
-        }
-        OptLevel::O2 => {
-            command.arg("-O2");
-        }
-        OptLevel::O3 => {
-            command.arg("-O3");
-        }
-        OptLevel::O4 => {
-            command.arg("-O4");
-        }
-        OptLevel::Os => {
-            command.arg("-Os");
-        }
-        OptLevel::Oz => {
-            command.arg("-Oz");
+    if !state
+        .user_settings
+        .wasm_opt_flags
+        .iter()
+        .any(|o| o.starts_with("-O"))
+    {
+        match state.build_settings.opt_level {
+            // -O0 does nothing, no need to specify it
+            OptLevel::O0 => (),
+            OptLevel::O1 => {
+                command.arg("-O1");
+            }
+            OptLevel::O2 => {
+                command.arg("-O2");
+            }
+            OptLevel::O3 => {
+                command.arg("-O3");
+            }
+            OptLevel::O4 => {
+                command.arg("-O4");
+            }
+            OptLevel::Os => {
+                command.arg("-Os");
+            }
+            OptLevel::Oz => {
+                command.arg("-Oz");
+            }
         }
     }
 
@@ -706,6 +715,9 @@ fn update_build_settings_from_arg(
     } else if arg == "-fno-wasm-exceptions" {
         user_settings.wasm_exceptions = false;
         Ok(true)
+    } else if arg == "--wasm-opt" {
+        build_settings.use_wasm_opt = true;
+        Ok(false)
     } else if arg == "--no-wasm-opt" {
         build_settings.use_wasm_opt = false;
         Ok(false)
