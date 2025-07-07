@@ -244,9 +244,11 @@ fn compile_inputs(state: &mut State) -> Result<()> {
         .llvm_location
         .get_tool_path(if state.cxx { "clang++" } else { "clang" });
 
+    let sysroot_path = state.user_settings.ensure_sysroot_location()?;
+
     let mut command_args: Vec<&OsStr> = vec![
         OsStr::new("--sysroot"),
-        state.user_settings.sysroot_location().as_os_str(),
+        sysroot_path.as_os_str(),
         OsStr::new("--target=wasm32-wasi"),
         OsStr::new("-c"),
         OsStr::new("-matomics"),
@@ -334,7 +336,8 @@ fn compile_inputs(state: &mut State) -> Result<()> {
 fn link_inputs(state: &State) -> Result<()> {
     let linker_path = state.user_settings.llvm_location.get_tool_path("wasm-ld");
 
-    let sysroot_lib_path = state.user_settings.sysroot_location().join("lib");
+    let sysroot_path = state.user_settings.ensure_sysroot_location()?;
+    let sysroot_lib_path = sysroot_path.join("lib");
     let sysroot_lib_wasm32_path = sysroot_lib_path.join("wasm32-wasi");
 
     let mut command = Command::new(linker_path);
@@ -762,6 +765,7 @@ mod tests {
         };
         let mut us = UserSettings {
             sysroot_location: None,
+            sysroot_prefix: None,
             llvm_location: LlvmLocation::FromSystem(0),
             extra_compiler_flags: vec![],
             extra_linker_flags: vec![],
@@ -786,6 +790,7 @@ mod tests {
     fn test_prepare_compiler_args_and_build_settings() {
         let mut us = UserSettings {
             sysroot_location: None,
+            sysroot_prefix: None,
             llvm_location: LlvmLocation::FromSystem(0),
             extra_compiler_flags: vec![],
             extra_linker_flags: vec![],
@@ -835,6 +840,7 @@ mod tests {
     fn test_prepare_linker_args() {
         let mut us = UserSettings {
             sysroot_location: None,
+            sysroot_prefix: None,
             llvm_location: LlvmLocation::FromSystem(0),
             extra_compiler_flags: vec![],
             extra_linker_flags: vec![],
@@ -864,5 +870,53 @@ mod tests {
         );
         assert_eq!(pa.linker_inputs, vec![PathBuf::from("mod.wasm")]);
         assert_eq!(us.module_kind, Some(ModuleKind::SharedLibrary));
+    }
+
+    #[test]
+    fn test_sysroot_prefix() {
+        let mut us = UserSettings {
+            sysroot_location: None,
+            sysroot_prefix: None,
+            llvm_location: LlvmLocation::FromSystem(0),
+            extra_compiler_flags: vec![],
+            extra_linker_flags: vec![],
+            run_wasm_opt: None,
+            wasm_opt_flags: vec![],
+            module_kind: None,
+            wasm_exceptions: false,
+            pic: false,
+        };
+
+        assert_eq!(
+            us.sysroot_location().unwrap(),
+            PathBuf::from("/lib/wasixcc/sysroot/sysroot")
+        );
+
+        us.sysroot_prefix = Some(PathBuf::from("/xxx"));
+        assert_eq!(
+            us.sysroot_location().unwrap(),
+            PathBuf::from("/xxx/sysroot")
+        );
+
+        us.wasm_exceptions = true;
+        assert_eq!(
+            us.sysroot_location().unwrap(),
+            PathBuf::from("/xxx/sysroot-eh")
+        );
+
+        us.pic = true;
+        assert_eq!(
+            us.sysroot_location().unwrap(),
+            PathBuf::from("/xxx/sysroot-ehpic")
+        );
+
+        us.wasm_exceptions = false;
+        assert!(us.sysroot_location().is_err());
+
+        us.sysroot_location = Some(PathBuf::from("/yyy"));
+        assert_eq!(us.sysroot_location().unwrap(), PathBuf::from("/yyy"));
+
+        // Hopefully, you don't have a /yyy folder on your system...
+        assert!(us.ensure_sysroot_location().is_err());
     }
 }

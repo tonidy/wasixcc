@@ -34,8 +34,8 @@ impl LlvmLocation {
 /// compiler flags; e.g. `-fno-wasm-exceptions` takes priority over `-sWASM_EXCEPTIONS=1`.
 #[derive(Debug)]
 struct UserSettings {
-    // TODO: implement automatic detection of sysroot kind, e.g. eh+pic vs eh
     sysroot_location: Option<PathBuf>, // key name: SYSROOT
+    sysroot_prefix: Option<PathBuf>,   // key name: SYSROOT_PREFIX
     llvm_location: LlvmLocation,       // key name: LLVM_LOCATION
     extra_compiler_flags: Vec<String>, // key name: COMPILER_FLAGS
     extra_linker_flags: Vec<String>,   // key name: LINKER_FLAGS
@@ -47,11 +47,32 @@ struct UserSettings {
 }
 
 impl UserSettings {
-    pub fn sysroot_location(&self) -> &Path {
-        self.sysroot_location.as_deref().expect(
-            "wasixcc currently requires a user-provided sysroot to run. \
-            Please set it using -sSYSROOT=path or WASIXCC_SYSROOT environment variable.",
-        )
+    pub fn sysroot_location(&self) -> Result<PathBuf> {
+        if let Some(sysroot) = self.sysroot_location.as_deref() {
+            Ok(sysroot.to_owned())
+        } else {
+            let prefix = self
+                .sysroot_prefix
+                .as_deref()
+                .unwrap_or(Path::new("/lib/wasixcc/sysroot"));
+
+            match (self.wasm_exceptions, self.pic) {
+                (true, true) => Ok(prefix.join("sysroot-ehpic")),
+                (true, false) => Ok(prefix.join("sysroot-eh")),
+                (false, true) => {
+                    bail!("PIC without wasm exceptions is not a valid build configuration")
+                }
+                (false, false) => Ok(prefix.join("sysroot")),
+            }
+        }
+    }
+
+    pub fn ensure_sysroot_location(&self) -> Result<PathBuf> {
+        let sysroot = self.sysroot_location()?;
+        if !sysroot.is_dir() {
+            bail!("sysroot does not exist: {}", sysroot.display());
+        }
+        Ok(sysroot)
     }
 
     pub fn module_kind(&self) -> ModuleKind {
@@ -138,6 +159,8 @@ fn gather_user_settings(args: &[String]) -> Result<UserSettings> {
 
     let sysroot_location = try_get_user_setting_value("SYSROOT", args)?;
 
+    let sysroot_prefix = try_get_user_setting_value("SYSROOT_PREFIX", args)?;
+
     let extra_compiler_flags = match try_get_user_setting_value("COMPILER_FLAGS", args)? {
         Some(flags) => read_string_list_user_setting(&flags),
         None => vec![],
@@ -186,6 +209,7 @@ fn gather_user_settings(args: &[String]) -> Result<UserSettings> {
 
     Ok(UserSettings {
         sysroot_location: sysroot_location.map(Into::into),
+        sysroot_prefix: sysroot_prefix.map(Into::into),
         llvm_location,
         extra_compiler_flags,
         extra_linker_flags,
@@ -363,6 +387,7 @@ mod tests {
         fs::set_permissions(&tool_path, perm).unwrap();
         let user_settings = UserSettings {
             sysroot_location: None,
+            sysroot_prefix: None,
             llvm_location: LlvmLocation::FromPath(bin.clone()),
             extra_compiler_flags: vec![],
             extra_linker_flags: vec![],
