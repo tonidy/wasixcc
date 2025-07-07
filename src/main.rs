@@ -1,9 +1,11 @@
+#[cfg(unix)]
 use std::path::PathBuf;
 
 use anyhow::{bail, Context, Result};
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
+#[cfg(unix)]
 const COMMANDS: &[&str] = &["cc", "++", "cc++", "ar", "nm", "ranlib", "ld"];
 
 fn setup_tracing() {
@@ -48,42 +50,43 @@ fn get_command() -> Result<String> {
 }
 
 fn install_executables() -> Result<()> {
-    let path = PathBuf::from(
-        std::env::args()
-            .nth(2)
-            .context("Usage: wasixcc install-executables <PATH>")?,
-    );
+    #[cfg(not(unix))]
+    {
+        bail!("wasixcc only supports installation on unix systems at this time");
+    }
 
-    std::fs::create_dir_all(&path)
-        .with_context(|| format!("Failed to create directory at {path:?}"))?;
+    #[cfg(unix)]
+    {
+        let path = PathBuf::from(
+            std::env::args()
+                .nth(2)
+                .context("Usage: wasixcc install-executables <PATH>")?,
+        );
 
-    let exe_path = std::env::current_exe().context("Failed to get current executable path")?;
+        std::fs::create_dir_all(&path)
+            .with_context(|| format!("Failed to create directory at {path:?}"))?;
 
-    for command in COMMANDS {
-        let target = path.join(format!("wasix{}", command));
+        let exe_path = std::env::current_exe().context("Failed to get current executable path")?;
 
-        if std::fs::metadata(&target).is_ok() {
-            std::fs::remove_file(&target)
-                .with_context(|| format!("Failed to remove existing file at {target:?}"))?;
-        }
+        for command in COMMANDS {
+            let target = path.join(format!("wasix{}", command));
 
-        #[cfg(unix)]
-        {
+            if std::fs::metadata(&target).is_ok() {
+                std::fs::remove_file(&target)
+                    .with_context(|| format!("Failed to remove existing file at {target:?}"))?;
+            }
+
             std::os::unix::fs::symlink(&exe_path, &target)
                 .with_context(|| format!("Failed create symlink at {target:?}"))?;
             let permissions = std::os::unix::fs::PermissionsExt::from_mode(0o755);
             std::fs::set_permissions(&target, permissions)
                 .with_context(|| format!("Failed to set permissions for {target:?}"))?;
-        }
-        #[cfg(not(unix))]
-        {
-            bail!("wasixcc only supports installation on unix systems at this time");
+
+            println!("Created command {target:?}");
         }
 
-        println!("Created command {target:?}");
+        Ok(())
     }
-
-    Ok(())
 }
 
 fn print_version() {
@@ -120,7 +123,7 @@ fn main() {
     match run() {
         Ok(()) => (),
         Err(e) => {
-            eprintln!("Error: {}", e);
+            eprintln!("Error: {:?}", e);
             std::process::exit(1);
         }
     }

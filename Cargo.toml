@@ -16,6 +16,12 @@ tracing-subscriber = { version = "0.3.19", optional = true, features = [
     "env-filter",
 ] }
 
+# Pinned dependencies for WASIX builds
+getrandom = "=0.3.3"
+
+[patch.crates-io]
+getrandom = { git = "https://github.com/wasix-org/getrandom", branch = "wasix-0.3.3" }
+
 [features]
 bin = ["tracing-subscriber"]
 tracing-subscriber = ["dep:tracing-subscriber"]
