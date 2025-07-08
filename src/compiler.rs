@@ -459,36 +459,40 @@ fn link_inputs(state: &State) -> Result<()> {
 fn run_wasm_opt(state: &State) -> Result<()> {
     let mut command = Command::new("wasm-opt");
 
-    if state.user_settings.wasm_exceptions {
-        command.arg("--emit-exnref");
-    }
+    if !state.user_settings.wasm_opt_suppress_default {
+        if state.user_settings.wasm_exceptions {
+            command.arg("--emit-exnref");
+        } else {
+            command.arg("--asyncify");
+        }
 
-    if !state
-        .user_settings
-        .wasm_opt_flags
-        .iter()
-        .any(|o| o.starts_with("-O"))
-    {
-        match state.build_settings.opt_level {
-            // -O0 does nothing, no need to specify it
-            OptLevel::O0 => (),
-            OptLevel::O1 => {
-                command.arg("-O1");
-            }
-            OptLevel::O2 => {
-                command.arg("-O2");
-            }
-            OptLevel::O3 => {
-                command.arg("-O3");
-            }
-            OptLevel::O4 => {
-                command.arg("-O4");
-            }
-            OptLevel::Os => {
-                command.arg("-Os");
-            }
-            OptLevel::Oz => {
-                command.arg("-Oz");
+        if !state
+            .user_settings
+            .wasm_opt_flags
+            .iter()
+            .any(|o| o.starts_with("-O"))
+        {
+            match state.build_settings.opt_level {
+                // -O0 does nothing, no need to specify it
+                OptLevel::O0 => (),
+                OptLevel::O1 => {
+                    command.arg("-O1");
+                }
+                OptLevel::O2 => {
+                    command.arg("-O2");
+                }
+                OptLevel::O3 => {
+                    command.arg("-O3");
+                }
+                OptLevel::O4 => {
+                    command.arg("-O4");
+                }
+                OptLevel::Os => {
+                    command.arg("-Os");
+                }
+                OptLevel::Oz => {
+                    command.arg("-Oz");
+                }
             }
         }
     }
@@ -679,6 +683,10 @@ fn prepare_linker_args(
         }
     }
 
+    if user_settings.module_kind().requires_pic() {
+        user_settings.pic = true;
+    }
+
     Ok(result)
 }
 
@@ -717,6 +725,12 @@ fn update_build_settings_from_arg(
         Ok(false)
     } else if arg == "-fno-wasm-exceptions" {
         user_settings.wasm_exceptions = false;
+        Ok(true)
+    } else if arg == "-fPIC" {
+        user_settings.pic = true;
+        Ok(true)
+    } else if arg == "-fno-PIC" {
+        user_settings.pic = false;
         Ok(true)
     } else if arg == "--wasm-opt" {
         build_settings.use_wasm_opt = true;
@@ -771,6 +785,7 @@ mod tests {
             extra_linker_flags: vec![],
             run_wasm_opt: None,
             wasm_opt_flags: vec![],
+            wasm_opt_suppress_default: false,
             module_kind: None,
             wasm_exceptions: false,
             pic: false,
@@ -796,6 +811,7 @@ mod tests {
             extra_linker_flags: vec![],
             run_wasm_opt: None,
             wasm_opt_flags: vec![],
+            wasm_opt_suppress_default: false,
             module_kind: None,
             wasm_exceptions: false,
             pic: false,
@@ -846,6 +862,7 @@ mod tests {
             extra_linker_flags: vec![],
             run_wasm_opt: None,
             wasm_opt_flags: vec![],
+            wasm_opt_suppress_default: false,
             module_kind: None,
             wasm_exceptions: false,
             pic: false,
@@ -882,6 +899,7 @@ mod tests {
             extra_linker_flags: vec![],
             run_wasm_opt: None,
             wasm_opt_flags: vec![],
+            wasm_opt_suppress_default: false,
             module_kind: None,
             wasm_exceptions: false,
             pic: false,

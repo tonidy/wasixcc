@@ -41,6 +41,7 @@ struct UserSettings {
     extra_linker_flags: Vec<String>,   // key name: LINKER_FLAGS
     run_wasm_opt: Option<bool>,        // key name: RUN_WASM_OPT
     wasm_opt_flags: Vec<String>,       // key name: WASM_OPT_FLAGS
+    wasm_opt_suppress_default: bool,   // key name: WASM_OPT_SUPPRESS_DEFAULT
     module_kind: Option<ModuleKind>,   // key name: MODULE_KIND
     wasm_exceptions: bool,             // key name: WASM_EXCEPTIONS
     pic: bool,                         // key name: PIC
@@ -147,8 +148,23 @@ pub fn run_ranlib() -> Result<()> {
 }
 
 fn separate_user_settings_args(args: Vec<String>) -> (Vec<String>, Vec<String>) {
-    args.into_iter()
-        .partition(|arg| arg.starts_with("-s") && arg.contains('='))
+    let mut seen_dash_dash = false;
+    let mut settings_args = Vec::new();
+    let mut tool_args = Vec::new();
+
+    for arg in args {
+        if arg == "--" {
+            seen_dash_dash = true;
+        } else if seen_dash_dash {
+            tool_args.push(arg);
+        } else if arg.starts_with("-s") && arg.contains('=') {
+            settings_args.push(arg);
+        } else {
+            tool_args.push(arg);
+        }
+    }
+
+    (settings_args, tool_args)
 }
 
 fn gather_user_settings(args: &[String]) -> Result<UserSettings> {
@@ -171,18 +187,32 @@ fn gather_user_settings(args: &[String]) -> Result<UserSettings> {
         None => vec![],
     };
 
+    let wasm_opt_flags = match try_get_user_setting_value("WASM_OPT_FLAGS", args)? {
+        Some(flags) => read_string_list_user_setting(&flags),
+        None => vec![],
+    };
+
     let run_wasm_opt = match try_get_user_setting_value("RUN_WASM_OPT", args)? {
         Some(value) => Some(
             read_bool_user_setting(&value)
                 .with_context(|| format!("Invalid value {value} for RUN_WASM_OPT"))?,
         ),
-        None => None,
+        None => {
+            if wasm_opt_flags.is_empty() {
+                None
+            } else {
+                // Assume user wants to run wasm-opt if flags are provided
+                Some(true)
+            }
+        }
     };
 
-    let wasm_opt_flags = match try_get_user_setting_value("WASM_OPT_FLAGS", args)? {
-        Some(flags) => read_string_list_user_setting(&flags),
-        None => vec![],
-    };
+    let wasm_opt_suppress_default =
+        match try_get_user_setting_value("WASM_OPT_SUPPRESS_DEFAULT", args)? {
+            Some(value) => read_bool_user_setting(&value)
+                .with_context(|| format!("Invalid value {value} for WASM_OPT_SUPPRESS_DEFAULT"))?,
+            None => false,
+        };
 
     let module_kind = match try_get_user_setting_value("MODULE_KIND", args)? {
         Some(kind) => Some(match kind.as_str() {
@@ -215,6 +245,7 @@ fn gather_user_settings(args: &[String]) -> Result<UserSettings> {
         extra_linker_flags,
         run_wasm_opt,
         wasm_opt_flags,
+        wasm_opt_suppress_default,
         module_kind,
         wasm_exceptions,
         pic,
@@ -393,6 +424,7 @@ mod tests {
             extra_linker_flags: vec![],
             run_wasm_opt: None,
             wasm_opt_flags: vec![],
+            wasm_opt_suppress_default: false,
             module_kind: None,
             wasm_exceptions: false,
             pic: false,
