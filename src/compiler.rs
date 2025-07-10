@@ -41,6 +41,9 @@ static CLANG_FLAGS_WITH_ARGS: LazyLock<HashSet<&str>> = LazyLock::new(|| {
     .into()
 });
 
+static CLANG_FLAGS_TO_FORWARD_TO_WASM_LD: LazyLock<HashSet<&str>> =
+    LazyLock::new(|| ["-L", "-l"].into());
+
 static WASM_LD_FLAGS_WITH_ARGS: LazyLock<HashSet<&str>> =
     LazyLock::new(|| ["-o", "-mllvm", "-L", "-l", "-m", "-O", "-y", "-z"].into());
 
@@ -394,15 +397,17 @@ fn link_inputs(state: &State) -> Result<()> {
         lib_arg.push(&sysroot_lib_wasm32_path);
         command.arg(lib_arg);
 
-        // Hack: we're linking libclang_rt into libc, so no need to link that here
         command.args([
+            "-lwasi-emulated-getpid",
             "-lwasi-emulated-mman",
+            "-lwasi-emulated-process-clocks",
             "-lc",
             "-lresolv",
             "-lrt",
             "-lm",
             "-lpthread",
             "-lutil",
+            "-lclang_rt.builtins-wasm32",
         ]);
 
         if state.cxx {
@@ -415,10 +420,6 @@ fn link_inputs(state: &State) -> Result<()> {
     }
 
     if state.user_settings.module_kind().requires_pic() {
-        if state.user_settings.link_symbolic {
-            command.arg("-Bsymbolic");
-        }
-
         command.args([
             "--experimental-pic",
             "--export-if-defined=__wasm_apply_data_relocs",
@@ -441,6 +442,9 @@ fn link_inputs(state: &State) -> Result<()> {
                 "--no-entry",
                 "--unresolved-symbols=import-dynamic",
             ]);
+            if state.user_settings.link_symbolic {
+                command.arg("-Bsymbolic");
+            }
         }
 
         ModuleKind::ObjectFile => panic!("Internal error: object files can't be linked"),
@@ -553,14 +557,8 @@ fn prepare_compiler_args(
 
     while let Some(arg) = iter.next() {
         if let Some(arg) = arg.strip_prefix("-Wl,") {
-            match arg.split_once(',') {
-                Some((x, y)) => {
-                    result.linker_args.push(x.to_owned());
-                    result.linker_args.push(y.to_owned());
-                }
-                None => {
-                    result.linker_args.push(arg.to_owned());
-                }
+            for split in arg.split(',') {
+                result.linker_args.push(split.to_owned());
             }
         } else if arg == "-Xlinker" {
             let Some(next_arg) = iter.next() else {
@@ -586,11 +584,20 @@ fn prepare_compiler_args(
             result.output = Some(output);
         } else if arg.starts_with('-') {
             if update_build_settings_from_arg(&arg, &mut build_settings, user_settings)? {
+                let args_list = if CLANG_FLAGS_TO_FORWARD_TO_WASM_LD
+                    .iter()
+                    .any(|flag| arg.starts_with(flag))
+                {
+                    &mut result.linker_args
+                } else {
+                    &mut result.compiler_args
+                };
+
                 let has_next_arg = CLANG_FLAGS_WITH_ARGS.contains(&arg[..]);
-                result.compiler_args.push(arg);
+                args_list.push(arg);
                 if has_next_arg {
                     if let Some(next_arg) = iter.next() {
-                        result.compiler_args.push(next_arg);
+                        args_list.push(next_arg);
                     }
                 }
             }
