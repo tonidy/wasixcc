@@ -415,6 +415,10 @@ fn link_inputs(state: &State) -> Result<()> {
     }
 
     if state.user_settings.module_kind().requires_pic() {
+        if state.user_settings.link_symbolic {
+            command.arg("-Bsymbolic");
+        }
+
         command.args([
             "--experimental-pic",
             "--export-if-defined=__wasm_apply_data_relocs",
@@ -789,6 +793,7 @@ mod tests {
             module_kind: None,
             wasm_exceptions: false,
             pic: false,
+            link_symbolic: false,
         };
         assert!(update_build_settings_from_arg("-O3", &mut bs, &mut us).unwrap());
         assert_eq!(bs.opt_level, OptLevel::O3);
@@ -815,6 +820,7 @@ mod tests {
             module_kind: None,
             wasm_exceptions: false,
             pic: false,
+            link_symbolic: false,
         };
         let args = vec![
             "-O2".to_string(),
@@ -866,6 +872,7 @@ mod tests {
             module_kind: None,
             wasm_exceptions: false,
             pic: false,
+            link_symbolic: false,
         };
         let args = vec![
             "-o".to_string(),
@@ -903,6 +910,7 @@ mod tests {
             module_kind: None,
             wasm_exceptions: false,
             pic: false,
+            link_symbolic: false,
         };
 
         assert_eq!(

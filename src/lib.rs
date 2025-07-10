@@ -1,3 +1,5 @@
+#![cfg_attr(target_vendor = "wasmer", allow(unexpected_cfgs))]
+
 use std::{
     collections::{HashMap, HashSet},
     ffi::{OsStr, OsString},
@@ -45,6 +47,7 @@ struct UserSettings {
     module_kind: Option<ModuleKind>,   // key name: MODULE_KIND
     wasm_exceptions: bool,             // key name: WASM_EXCEPTIONS
     pic: bool,                         // key name: PIC
+    link_symbolic: bool,               // key name: LINK_SYMBOLIC
 }
 
 impl UserSettings {
@@ -237,6 +240,12 @@ fn gather_user_settings(args: &[String]) -> Result<UserSettings> {
         None => false,
     };
 
+    let link_symbolic = match try_get_user_setting_value("LINK_SYMBOLIC", args)? {
+        Some(value) => read_bool_user_setting(&value)
+            .with_context(|| format!("Invalid value {value} for LINK_SYMBOLIC"))?,
+        None => true,
+    };
+
     Ok(UserSettings {
         sysroot_location: sysroot_location.map(Into::into),
         sysroot_prefix: sysroot_prefix.map(Into::into),
@@ -249,6 +258,7 @@ fn gather_user_settings(args: &[String]) -> Result<UserSettings> {
         module_kind,
         wasm_exceptions,
         pic,
+        link_symbolic,
     })
 }
 
@@ -428,6 +438,7 @@ mod tests {
             module_kind: None,
             wasm_exceptions: false,
             pic: false,
+            link_symbolic: false,
         };
         run_tool_with_passthrough_args("dummytool", vec!["X".into(), "Y".into()], user_settings)
             .unwrap();

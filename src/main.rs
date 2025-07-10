@@ -58,6 +58,7 @@ fn get_command(exe_name: &str) -> Result<String> {
     }
 }
 
+#[cfg_attr(target_vendor = "wasmer", allow(unused_variables))]
 fn install_executables(path: PathBuf) -> Result<()> {
     #[cfg(not(unix))]
     {
@@ -167,6 +168,14 @@ The following configuration options are available:");
                            required for dynamic linking. PIC will be enabled
                            if module kind is `dynamic-main` or `shared-library`,
                            or if the `-fPIC` flag is passed to the compiler.
+  LINK_SYMBOLIC=<BOOL>     Whether to link the output with `-Bsymbolic`, which
+                           binds defined symbols locally, hence preventing
+                           similarly named symbols from other modules from
+                           overriding the module's local symbols. This is
+                           enabled by default, but can be disabled by setting
+                           this option to `false`. This option is only
+                           relevant for dynamic main modules and shared
+                           libraries.
 
 Note: Pass-through options are passed directly to the underlying
 LLVM executables (e.g., clang, wasm-ld, etc.). This is useful for
