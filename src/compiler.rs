@@ -270,6 +270,11 @@ fn compile_inputs(state: &mut State) -> Result<()> {
         command_args.push(OsStr::new("-fwasm-exceptions"));
         command_args.push(OsStr::new("-mllvm"));
         command_args.push(OsStr::new("--wasm-enable-sjlj"));
+        if state.cxx {
+            // Enable C++ exceptions as well
+            command_args.push(OsStr::new("-mllvm"));
+            command_args.push(OsStr::new("--wasm-enable-eh"));
+        }
     }
 
     if state.user_settings.module_kind().requires_pic() || state.user_settings.pic {
@@ -278,11 +283,6 @@ fn compile_inputs(state: &mut State) -> Result<()> {
         command_args.push(OsStr::new("-fvisibility=default"));
     } else {
         command_args.push(OsStr::new("-ftls-model=local-exec"));
-    }
-
-    if state.cxx {
-        // C++ exceptions aren't supported in WASIX yet
-        command_args.push(OsStr::new("-fno-exceptions"));
     }
 
     if state.build_settings.debug_level != DebugLevel::None {
@@ -362,6 +362,9 @@ fn link_inputs(state: &State) -> Result<()> {
 
     if state.user_settings.wasm_exceptions {
         command.args(["-mllvm", "--wasm-enable-sjlj"]);
+        if state.cxx {
+            command.args(["-mllvm", "--wasm-enable-eh"]);
+        }
     }
 
     let module_kind = state.user_settings.module_kind();
@@ -386,17 +389,19 @@ fn link_inputs(state: &State) -> Result<()> {
         command.args(["--whole-archive", "--export-all"]);
     }
 
+    // Make sysroots libs available to all modules so they can optionally
+    // link against them if needed, even when we don't.
+    let mut lib_arg = OsString::new();
+    lib_arg.push("-L");
+    lib_arg.push(&sysroot_lib_path);
+    command.arg(lib_arg);
+
+    let mut lib_arg = OsString::new();
+    lib_arg.push("-L");
+    lib_arg.push(&sysroot_lib_wasm32_path);
+    command.arg(lib_arg);
+
     if module_kind.is_executable() {
-        let mut lib_arg = OsString::new();
-        lib_arg.push("-L");
-        lib_arg.push(&sysroot_lib_path);
-        command.arg(lib_arg);
-
-        let mut lib_arg = OsString::new();
-        lib_arg.push("-L");
-        lib_arg.push(&sysroot_lib_wasm32_path);
-        command.arg(lib_arg);
-
         command.args([
             "-lwasi-emulated-getpid",
             "-lwasi-emulated-mman",
@@ -407,17 +412,19 @@ fn link_inputs(state: &State) -> Result<()> {
             "-lm",
             "-lpthread",
             "-lutil",
-            "-lclang_rt.builtins-wasm32",
         ]);
 
         if state.cxx {
-            command.args(["-lc++", "-lc++abi"]);
+            command.args(["-lc++", "-lc++abi", "-lunwind"]);
         }
     }
 
     if matches!(module_kind, ModuleKind::DynamicMain) {
         command.args(["--no-whole-archive"]);
     }
+
+    // Link as much as needed out of libclang_rt.builtins regardless of module kind.
+    command.arg("-lclang_rt.builtins-wasm32");
 
     if state.user_settings.module_kind().requires_pic() {
         command.args([
