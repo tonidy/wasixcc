@@ -44,6 +44,10 @@ static CLANG_FLAGS_WITH_ARGS: LazyLock<HashSet<&str>> = LazyLock::new(|| {
 static CLANG_FLAGS_TO_FORWARD_TO_WASM_LD: LazyLock<HashSet<&str>> =
     LazyLock::new(|| ["-L", "-l"].into());
 
+// We always specify values for these (well, this, we only have one right now) flags according
+// to the build configuration, so they must be discarded even if they're provided externally
+static CLANG_FLAGS_TO_DISCARD: LazyLock<HashSet<&str>> = LazyLock::new(|| ["-ftls-model"].into());
+
 static WASM_LD_FLAGS_WITH_ARGS: LazyLock<HashSet<&str>> =
     LazyLock::new(|| ["-o", "-mllvm", "-L", "-l", "-m", "-O", "-y", "-z"].into());
 
@@ -599,6 +603,20 @@ fn prepare_compiler_args(
             result.output = Some(output);
         } else if arg.starts_with('-') {
             if update_build_settings_from_arg(&arg, &mut build_settings, user_settings)? {
+                // Read the value early so it's also discarded if we discard the flag
+                let next_arg = if CLANG_FLAGS_WITH_ARGS.contains(arg.as_str()) {
+                    iter.next()
+                } else {
+                    None
+                };
+
+                if CLANG_FLAGS_TO_DISCARD.iter().any(|flag| {
+                    arg.strip_prefix(flag)
+                        .is_some_and(|value| value.is_empty() || value.starts_with('='))
+                }) {
+                    continue;
+                }
+
                 let args_list = if CLANG_FLAGS_TO_FORWARD_TO_WASM_LD
                     .iter()
                     .any(|flag| arg.starts_with(flag))
@@ -608,12 +626,9 @@ fn prepare_compiler_args(
                     &mut result.compiler_args
                 };
 
-                let has_next_arg = CLANG_FLAGS_WITH_ARGS.contains(&arg[..]);
                 args_list.push(arg);
-                if has_next_arg {
-                    if let Some(next_arg) = iter.next() {
-                        args_list.push(next_arg);
-                    }
+                if let Some(next_arg) = next_arg {
+                    args_list.push(next_arg);
                 }
             }
         } else {
