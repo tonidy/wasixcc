@@ -11,6 +11,7 @@ enum WasixccCommand {
     Help,
     Version,
     InstallExecutables(PathBuf),
+    PrintSysroot,
     RunTool,
 }
 
@@ -101,6 +102,12 @@ fn print_version(exe_name: &str) {
     println!("{exe_name} version: {version}");
 }
 
+fn print_sysroot() -> Result<()> {
+    let sysroot = wasixcc::get_sysroot()?;
+    println!("{}", sysroot.display());
+    Ok(())
+}
+
 fn print_help(exe_name: &str) {
     println!(
         r#"Usage: {exe_name} [OPTIONS] -- [PASS-THROUGH OPTIONS]
@@ -124,6 +131,12 @@ The following configuration options are available:");
                            a -20 version suffix (e.g. clang-20).
   COMPILER_FLAGS=<FLAGS>   Extra flags to pass to the compiler, separated
                            by colons (':')
+  COMPILER_POST_FLAGS=<FLAGS>
+                           Extra flags to pass to the compiler, separated
+                           by colons (':'), passed after the arguments
+                           provided on the command line. This is useful for
+                           overriding command-line flags, such as for disabling
+                           warnings.
   LINKER_FLAGS=<FLAGS>     Extra flags to pass to the linker, separated
                            by colons (':')
   RUN_WASM_OPT=<BOOL>      Whether to run `wasm-opt` on the output of the
@@ -202,6 +215,8 @@ fn get_wasixcc_command(exe_name: &str) -> WasixccCommand {
                 WasixccCommand::InstallExecutables(PathBuf::from(path))
             }
 
+            "--print-sysroot" => WasixccCommand::PrintSysroot,
+
             "--" => WasixccCommand::RunTool,
 
             _ => continue,
@@ -226,6 +241,7 @@ fn run() -> Result<()> {
             Ok(())
         }
         WasixccCommand::InstallExecutables(path) => install_executables(path),
+        WasixccCommand::PrintSysroot => print_sysroot(),
         WasixccCommand::RunTool => {
             let command_name = get_command(&exe_name)?;
             match command_name.as_str() {

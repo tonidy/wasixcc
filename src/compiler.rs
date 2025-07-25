@@ -557,10 +557,18 @@ fn prepare_compiler_args(
 
     let mut extra_flags = vec![];
     std::mem::swap(&mut extra_flags, &mut user_settings.extra_compiler_flags);
+    let mut extra_post_flags = vec![];
+    std::mem::swap(
+        &mut extra_post_flags,
+        &mut user_settings.extra_compiler_post_flags,
+    );
 
     // Since we used to do CC="clang --flag1 --flag2", it seems putting the extra flags
     // first has worked for us, so we keep that behavior.
-    let mut iter = extra_flags.into_iter().chain(args);
+    let mut iter = extra_flags
+        .into_iter()
+        .chain(args)
+        .chain(extra_post_flags.into_iter());
 
     while let Some(arg) = iter.next() {
         if let Some(arg) = arg.strip_prefix("-Wl,") {
@@ -800,6 +808,7 @@ mod tests {
             sysroot_prefix: None,
             llvm_location: LlvmLocation::FromSystem(0),
             extra_compiler_flags: vec![],
+            extra_compiler_post_flags: vec![],
             extra_linker_flags: vec![],
             run_wasm_opt: None,
             wasm_opt_flags: vec![],
@@ -827,6 +836,7 @@ mod tests {
             sysroot_prefix: None,
             llvm_location: LlvmLocation::FromSystem(0),
             extra_compiler_flags: vec![],
+            extra_compiler_post_flags: vec![],
             extra_linker_flags: vec![],
             run_wasm_opt: None,
             wasm_opt_flags: vec![],
@@ -879,6 +889,7 @@ mod tests {
             sysroot_prefix: None,
             llvm_location: LlvmLocation::FromSystem(0),
             extra_compiler_flags: vec![],
+            extra_compiler_post_flags: vec![],
             extra_linker_flags: vec![],
             run_wasm_opt: None,
             wasm_opt_flags: vec![],
@@ -917,6 +928,7 @@ mod tests {
             sysroot_prefix: None,
             llvm_location: LlvmLocation::FromSystem(0),
             extra_compiler_flags: vec![],
+            extra_compiler_post_flags: vec![],
             extra_linker_flags: vec![],
             run_wasm_opt: None,
             wasm_opt_flags: vec![],

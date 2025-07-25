@@ -36,18 +36,19 @@ impl LlvmLocation {
 /// compiler flags; e.g. `-fno-wasm-exceptions` takes priority over `-sWASM_EXCEPTIONS=1`.
 #[derive(Debug)]
 struct UserSettings {
-    sysroot_location: Option<PathBuf>, // key name: SYSROOT
-    sysroot_prefix: Option<PathBuf>,   // key name: SYSROOT_PREFIX
-    llvm_location: LlvmLocation,       // key name: LLVM_LOCATION
-    extra_compiler_flags: Vec<String>, // key name: COMPILER_FLAGS
-    extra_linker_flags: Vec<String>,   // key name: LINKER_FLAGS
-    run_wasm_opt: Option<bool>,        // key name: RUN_WASM_OPT
-    wasm_opt_flags: Vec<String>,       // key name: WASM_OPT_FLAGS
-    wasm_opt_suppress_default: bool,   // key name: WASM_OPT_SUPPRESS_DEFAULT
-    module_kind: Option<ModuleKind>,   // key name: MODULE_KIND
-    wasm_exceptions: bool,             // key name: WASM_EXCEPTIONS
-    pic: bool,                         // key name: PIC
-    link_symbolic: bool,               // key name: LINK_SYMBOLIC
+    sysroot_location: Option<PathBuf>,      // key name: SYSROOT
+    sysroot_prefix: Option<PathBuf>,        // key name: SYSROOT_PREFIX
+    llvm_location: LlvmLocation,            // key name: LLVM_LOCATION
+    extra_compiler_flags: Vec<String>,      // key name: COMPILER_FLAGS
+    extra_compiler_post_flags: Vec<String>, // key name: COMPILER_POST_FLAGS
+    extra_linker_flags: Vec<String>,        // key name: LINKER_FLAGS
+    run_wasm_opt: Option<bool>,             // key name: RUN_WASM_OPT
+    wasm_opt_flags: Vec<String>,            // key name: WASM_OPT_FLAGS
+    wasm_opt_suppress_default: bool,        // key name: WASM_OPT_SUPPRESS_DEFAULT
+    module_kind: Option<ModuleKind>,        // key name: MODULE_KIND
+    wasm_exceptions: bool,                  // key name: WASM_EXCEPTIONS
+    pic: bool,                              // key name: PIC
+    link_symbolic: bool,                    // key name: LINK_SYMBOLIC
 }
 
 impl UserSettings {
@@ -150,6 +151,11 @@ pub fn run_ranlib() -> Result<()> {
     run_tool_with_passthrough_args("llvm-ranlib", args, user_settings)
 }
 
+pub fn get_sysroot() -> Result<PathBuf> {
+    let (_, user_settings) = get_args_and_user_settings()?;
+    user_settings.ensure_sysroot_location()
+}
+
 fn separate_user_settings_args(args: Vec<String>) -> (Vec<String>, Vec<String>) {
     let mut seen_dash_dash = false;
     let mut settings_args = Vec::new();
@@ -181,6 +187,11 @@ fn gather_user_settings(args: &[String]) -> Result<UserSettings> {
     let sysroot_prefix = try_get_user_setting_value("SYSROOT_PREFIX", args)?;
 
     let extra_compiler_flags = match try_get_user_setting_value("COMPILER_FLAGS", args)? {
+        Some(flags) => read_string_list_user_setting(&flags),
+        None => vec![],
+    };
+
+    let extra_compiler_post_flags = match try_get_user_setting_value("COMPILER_POST_FLAGS", args)? {
         Some(flags) => read_string_list_user_setting(&flags),
         None => vec![],
     };
@@ -251,6 +262,7 @@ fn gather_user_settings(args: &[String]) -> Result<UserSettings> {
         sysroot_prefix: sysroot_prefix.map(Into::into),
         llvm_location,
         extra_compiler_flags,
+        extra_compiler_post_flags,
         extra_linker_flags,
         run_wasm_opt,
         wasm_opt_flags,
@@ -431,6 +443,7 @@ mod tests {
             sysroot_prefix: None,
             llvm_location: LlvmLocation::FromPath(bin.clone()),
             extra_compiler_flags: vec![],
+            extra_compiler_post_flags: vec![],
             extra_linker_flags: vec![],
             run_wasm_opt: None,
             wasm_opt_flags: vec![],
