@@ -117,6 +117,8 @@ Options:
   --version, -v                  Print version information
   -s[CONFIG]=[VALUE]             Set a configuration value, see list below
   --install-executables <PATH>   Install executables to the specified path
+  --print-sysroot                Print sysroot location corresponding to
+                                 current build configuration
 
 Configuration options can be provided on the command line using the
 '-s' flag, or using environment variables prefixed with 'WASIXCC_'.
@@ -137,6 +139,17 @@ The following configuration options are available:");
                            provided on the command line. This is useful for
                            overriding command-line flags, such as for disabling
                            warnings.
+  COMPILER_FLAGS_C=<FLAGS> Same as COMPILER_FLAGS, but only for C
+                           files. This is useful for passing flags that are
+                           not compatible with C++.
+  COMPILER_POST_FLAGS_C=<FLAGS>
+                           Same as COMPILER_POST_FLAGS, but only for C files.
+  COMPILER_FLAGS_CXX=<FLAGS>
+                           Same as COMPILER_FLAGS, but only for C++ files.
+                           This is useful for passing flags that are not
+                           compatible with C.
+  COMPILER_POST_FLAGS_CXX=<FLAGS>
+                           Same as COMPILER_POST_FLAGS, but only for C++ files.
   LINKER_FLAGS=<FLAGS>     Extra flags to pass to the linker, separated
                            by colons (':')
   RUN_WASM_OPT=<BOOL>      Whether to run `wasm-opt` on the output of the

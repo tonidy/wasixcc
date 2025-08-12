@@ -44,9 +44,10 @@ static CLANG_FLAGS_WITH_ARGS: LazyLock<HashSet<&str>> = LazyLock::new(|| {
 static CLANG_FLAGS_TO_FORWARD_TO_WASM_LD: LazyLock<HashSet<&str>> =
     LazyLock::new(|| ["-L", "-l"].into());
 
-// We always specify values for these (well, this, we only have one right now) flags according
-// to the build configuration, so they must be discarded even if they're provided externally
-static CLANG_FLAGS_TO_DISCARD: LazyLock<HashSet<&str>> = LazyLock::new(|| ["-ftls-model"].into());
+// We always specify values for these flags according to the build configuration, so
+// they must be discarded even if they're provided externally
+static CLANG_FLAGS_TO_DISCARD: LazyLock<HashSet<&str>> =
+    LazyLock::new(|| ["-ftls-model", "--sysroot", "--target", "-mthread-model"].into());
 
 static WASM_LD_FLAGS_WITH_ARGS: LazyLock<HashSet<&str>> =
     LazyLock::new(|| ["-o", "-mllvm", "-L", "-l", "-m", "-O", "-y", "-z"].into());
@@ -133,7 +134,7 @@ pub(crate) struct State {
 pub(crate) fn run(args: Vec<String>, mut user_settings: UserSettings, run_cxx: bool) -> Result<()> {
     let original_args = args.clone();
 
-    let (args, build_settings) = prepare_compiler_args(args, &mut user_settings)?;
+    let (args, build_settings) = prepare_compiler_args(args, &mut user_settings, run_cxx)?;
 
     tracing::info!("Compiler settings: {user_settings:?}");
 
@@ -434,6 +435,7 @@ fn link_inputs(state: &State) -> Result<()> {
         command.args([
             "--experimental-pic",
             "--export-if-defined=__wasm_apply_data_relocs",
+            "--export-if-defined=__wasm_apply_tls_relocs",
         ]);
     }
 
@@ -545,6 +547,7 @@ fn run_wasm_opt(state: &State) -> Result<()> {
 fn prepare_compiler_args(
     args: Vec<String>,
     user_settings: &mut UserSettings,
+    run_cxx: bool,
 ) -> Result<(PreparedArgs, BuildSettings)> {
     let mut result = PreparedArgs {
         compiler_args: Vec::new(),
@@ -561,18 +564,36 @@ fn prepare_compiler_args(
 
     let mut extra_flags = vec![];
     std::mem::swap(&mut extra_flags, &mut user_settings.extra_compiler_flags);
+    let mut extra_flags2 = vec![];
+    std::mem::swap(
+        &mut extra_flags2,
+        if run_cxx {
+            &mut user_settings.extra_compiler_flags_cxx
+        } else {
+            &mut user_settings.extra_compiler_flags_c
+        },
+    );
     let mut extra_post_flags = vec![];
     std::mem::swap(
         &mut extra_post_flags,
         &mut user_settings.extra_compiler_post_flags,
     );
+    let mut extra_post_flags2 = vec![];
+    std::mem::swap(
+        &mut extra_post_flags2,
+        if run_cxx {
+            &mut user_settings.extra_compiler_post_flags_cxx
+        } else {
+            &mut user_settings.extra_compiler_post_flags_c
+        },
+    );
 
-    // Since we used to do CC="clang --flag1 --flag2", it seems putting the extra flags
-    // first has worked for us, so we keep that behavior.
     let mut iter = extra_flags
         .into_iter()
+        .chain(extra_flags2.into_iter())
         .chain(args)
-        .chain(extra_post_flags.into_iter());
+        .chain(extra_post_flags.into_iter())
+        .chain(extra_post_flags2.into_iter());
 
     while let Some(arg) = iter.next() {
         if let Some(arg) = arg.strip_prefix("-Wl,") {
@@ -795,7 +816,7 @@ fn deduce_module_kind(extension: &OsStr) -> Option<ModuleKind> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{LlvmLocation, UserSettings};
+    use crate::UserSettings;
     use std::{ffi::OsStr, path::PathBuf};
 
     #[test]
@@ -818,21 +839,7 @@ mod tests {
             debug_level: DebugLevel::None,
             use_wasm_opt: true,
         };
-        let mut us = UserSettings {
-            sysroot_location: None,
-            sysroot_prefix: None,
-            llvm_location: LlvmLocation::FromSystem(0),
-            extra_compiler_flags: vec![],
-            extra_compiler_post_flags: vec![],
-            extra_linker_flags: vec![],
-            run_wasm_opt: None,
-            wasm_opt_flags: vec![],
-            wasm_opt_suppress_default: false,
-            module_kind: None,
-            wasm_exceptions: false,
-            pic: false,
-            link_symbolic: false,
-        };
+        let mut us = UserSettings::default();
         assert!(update_build_settings_from_arg("-O3", &mut bs, &mut us).unwrap());
         assert_eq!(bs.opt_level, OptLevel::O3);
         assert!(update_build_settings_from_arg("-g1", &mut bs, &mut us).unwrap());
@@ -846,21 +853,7 @@ mod tests {
 
     #[test]
     fn test_prepare_compiler_args_and_build_settings() {
-        let mut us = UserSettings {
-            sysroot_location: None,
-            sysroot_prefix: None,
-            llvm_location: LlvmLocation::FromSystem(0),
-            extra_compiler_flags: vec![],
-            extra_compiler_post_flags: vec![],
-            extra_linker_flags: vec![],
-            run_wasm_opt: None,
-            wasm_opt_flags: vec![],
-            wasm_opt_suppress_default: false,
-            module_kind: None,
-            wasm_exceptions: false,
-            pic: false,
-            link_symbolic: false,
-        };
+        let mut us = UserSettings::default();
         let args = vec![
             "-O2".to_string(),
             "-g0".to_string(),
@@ -876,7 +869,7 @@ mod tests {
             "in.c".to_string(),
             "lib.o".to_string(),
         ];
-        let (pa, bs) = prepare_compiler_args(args, &mut us).unwrap();
+        let (pa, bs) = prepare_compiler_args(args, &mut us, false).unwrap();
         assert_eq!(bs.opt_level, OptLevel::O2);
         assert_eq!(bs.debug_level, DebugLevel::G0);
         assert!(!bs.use_wasm_opt);
@@ -899,21 +892,7 @@ mod tests {
 
     #[test]
     fn test_prepare_linker_args() {
-        let mut us = UserSettings {
-            sysroot_location: None,
-            sysroot_prefix: None,
-            llvm_location: LlvmLocation::FromSystem(0),
-            extra_compiler_flags: vec![],
-            extra_compiler_post_flags: vec![],
-            extra_linker_flags: vec![],
-            run_wasm_opt: None,
-            wasm_opt_flags: vec![],
-            wasm_opt_suppress_default: false,
-            module_kind: None,
-            wasm_exceptions: false,
-            pic: false,
-            link_symbolic: false,
-        };
+        let mut us = UserSettings::default();
         let args = vec![
             "-o".to_string(),
             "out.wasm".to_string(),
@@ -938,21 +917,7 @@ mod tests {
 
     #[test]
     fn test_sysroot_prefix() {
-        let mut us = UserSettings {
-            sysroot_location: None,
-            sysroot_prefix: None,
-            llvm_location: LlvmLocation::FromSystem(0),
-            extra_compiler_flags: vec![],
-            extra_compiler_post_flags: vec![],
-            extra_linker_flags: vec![],
-            run_wasm_opt: None,
-            wasm_opt_flags: vec![],
-            wasm_opt_suppress_default: false,
-            module_kind: None,
-            wasm_exceptions: false,
-            pic: false,
-            link_symbolic: false,
-        };
+        let mut us = UserSettings::default();
 
         assert_eq!(
             us.sysroot_location().unwrap(),

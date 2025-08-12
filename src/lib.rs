@@ -32,23 +32,35 @@ impl LlvmLocation {
     }
 }
 
+#[cfg(test)]
+impl Default for LlvmLocation {
+    fn default() -> Self {
+        LlvmLocation::FromSystem(0) // Default to clang-20
+    }
+}
+
 /// Settings provided by user through env vars or -s flags. Some can be overridden by
 /// compiler flags; e.g. `-fno-wasm-exceptions` takes priority over `-sWASM_EXCEPTIONS=1`.
 #[derive(Debug)]
+#[cfg_attr(test, derive(Default))]
 struct UserSettings {
-    sysroot_location: Option<PathBuf>,      // key name: SYSROOT
-    sysroot_prefix: Option<PathBuf>,        // key name: SYSROOT_PREFIX
-    llvm_location: LlvmLocation,            // key name: LLVM_LOCATION
-    extra_compiler_flags: Vec<String>,      // key name: COMPILER_FLAGS
-    extra_compiler_post_flags: Vec<String>, // key name: COMPILER_POST_FLAGS
-    extra_linker_flags: Vec<String>,        // key name: LINKER_FLAGS
-    run_wasm_opt: Option<bool>,             // key name: RUN_WASM_OPT
-    wasm_opt_flags: Vec<String>,            // key name: WASM_OPT_FLAGS
-    wasm_opt_suppress_default: bool,        // key name: WASM_OPT_SUPPRESS_DEFAULT
-    module_kind: Option<ModuleKind>,        // key name: MODULE_KIND
-    wasm_exceptions: bool,                  // key name: WASM_EXCEPTIONS
-    pic: bool,                              // key name: PIC
-    link_symbolic: bool,                    // key name: LINK_SYMBOLIC
+    sysroot_location: Option<PathBuf>,          // key name: SYSROOT
+    sysroot_prefix: Option<PathBuf>,            // key name: SYSROOT_PREFIX
+    llvm_location: LlvmLocation,                // key name: LLVM_LOCATION
+    extra_compiler_flags: Vec<String>,          // key name: COMPILER_FLAGS
+    extra_compiler_post_flags: Vec<String>,     // key name: COMPILER_POST_FLAGS
+    extra_compiler_flags_c: Vec<String>,        // key name: COMPILER_FLAGS_C
+    extra_compiler_post_flags_c: Vec<String>,   // key name: COMPILER_POST_FLAGS_C
+    extra_compiler_flags_cxx: Vec<String>,      // key name: COMPILER_FLAGS_CXX
+    extra_compiler_post_flags_cxx: Vec<String>, // key name: COMPILER_POST_FLAGS_CXX
+    extra_linker_flags: Vec<String>,            // key name: LINKER_FLAGS
+    run_wasm_opt: Option<bool>,                 // key name: RUN_WASM_OPT
+    wasm_opt_flags: Vec<String>,                // key name: WASM_OPT_FLAGS
+    wasm_opt_suppress_default: bool,            // key name: WASM_OPT_SUPPRESS_DEFAULT
+    module_kind: Option<ModuleKind>,            // key name: MODULE_KIND
+    wasm_exceptions: bool,                      // key name: WASM_EXCEPTIONS
+    pic: bool,                                  // key name: PIC
+    link_symbolic: bool,                        // key name: LINK_SYMBOLIC
 }
 
 impl UserSettings {
@@ -196,6 +208,28 @@ fn gather_user_settings(args: &[String]) -> Result<UserSettings> {
         None => vec![],
     };
 
+    let extra_compiler_flags_c = match try_get_user_setting_value("COMPILER_FLAGS_C", args)? {
+        Some(flags) => read_string_list_user_setting(&flags),
+        None => vec![],
+    };
+
+    let extra_compiler_post_flags_c =
+        match try_get_user_setting_value("COMPILER_POST_FLAGS_C", args)? {
+            Some(flags) => read_string_list_user_setting(&flags),
+            None => vec![],
+        };
+
+    let extra_compiler_flags_cxx = match try_get_user_setting_value("COMPILER_FLAGS_CXX", args)? {
+        Some(flags) => read_string_list_user_setting(&flags),
+        None => vec![],
+    };
+
+    let extra_compiler_post_flags_cxx =
+        match try_get_user_setting_value("COMPILER_POST_FLAGS_CXX", args)? {
+            Some(flags) => read_string_list_user_setting(&flags),
+            None => vec![],
+        };
+
     let extra_linker_flags = match try_get_user_setting_value("LINKER_FLAGS", args)? {
         Some(flags) => read_string_list_user_setting(&flags),
         None => vec![],
@@ -263,6 +297,10 @@ fn gather_user_settings(args: &[String]) -> Result<UserSettings> {
         llvm_location,
         extra_compiler_flags,
         extra_compiler_post_flags,
+        extra_compiler_flags_c,
+        extra_compiler_post_flags_c,
+        extra_compiler_flags_cxx,
+        extra_compiler_post_flags_cxx,
         extra_linker_flags,
         run_wasm_opt,
         wasm_opt_flags,
@@ -439,19 +477,8 @@ mod tests {
         perm.set_mode(0o755);
         fs::set_permissions(&tool_path, perm).unwrap();
         let user_settings = UserSettings {
-            sysroot_location: None,
-            sysroot_prefix: None,
             llvm_location: LlvmLocation::FromPath(bin.clone()),
-            extra_compiler_flags: vec![],
-            extra_compiler_post_flags: vec![],
-            extra_linker_flags: vec![],
-            run_wasm_opt: None,
-            wasm_opt_flags: vec![],
-            wasm_opt_suppress_default: false,
-            module_kind: None,
-            wasm_exceptions: false,
-            pic: false,
-            link_symbolic: false,
+            ..Default::default()
         };
         run_tool_with_passthrough_args("dummytool", vec!["X".into(), "Y".into()], user_settings)
             .unwrap();
