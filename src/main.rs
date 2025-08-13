@@ -1,8 +1,9 @@
-use std::path::PathBuf;
+use std::{path::PathBuf, str::FromStr};
 
 use anyhow::{bail, Context, Result};
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
+use wasixcc::{download_sysroot, sysroot_download::SysrootSpec};
 
 #[cfg(unix)]
 const COMMANDS: &[&str] = &["cc", "++", "cc++", "ar", "nm", "ranlib", "ld"];
@@ -11,6 +12,7 @@ enum WasixccCommand {
     Help,
     Version,
     InstallExecutables(PathBuf),
+    DownloadSysroot(SysrootSpec),
     PrintSysroot,
     RunTool,
 }
@@ -117,6 +119,13 @@ Options:
   --version, -v                  Print version information
   -s[CONFIG]=[VALUE]             Set a configuration value, see list below
   --install-executables <PATH>   Install executables to the specified path
+  --download-sysroot <TAG>       Download and install the wasix-libc sysroot.
+                                 The tag can be 'latest' or a specific tag
+                                 such as 'v2025-01-01.1'. If the tag is
+                                 omitted, the latest version will be
+                                 downloaded. The downloaded sysroot will be
+                                 unpacked into the directory pointed to by
+                                 the SYSROOT_PREFIX setting.
   --print-sysroot                Print sysroot location corresponding to
                                  current build configuration
 
@@ -228,6 +237,20 @@ fn get_wasixcc_command(exe_name: &str) -> WasixccCommand {
                 WasixccCommand::InstallExecutables(PathBuf::from(path))
             }
 
+            "--download-sysroot" => {
+                let sysroot_spec = match args.next() {
+                    Some(spec) => match SysrootSpec::from_str(&spec) {
+                        Ok(x) => x,
+                        Err(e) => {
+                            eprintln!("{e}");
+                            std::process::exit(1);
+                        }
+                    },
+                    None => SysrootSpec::Latest,
+                };
+                WasixccCommand::DownloadSysroot(sysroot_spec)
+            }
+
             "--print-sysroot" => WasixccCommand::PrintSysroot,
 
             "--" => WasixccCommand::RunTool,
@@ -254,6 +277,7 @@ fn run() -> Result<()> {
             Ok(())
         }
         WasixccCommand::InstallExecutables(path) => install_executables(path),
+        WasixccCommand::DownloadSysroot(sysroot_spec) => download_sysroot(sysroot_spec),
         WasixccCommand::PrintSysroot => print_sysroot(),
         WasixccCommand::RunTool => {
             let command_name = get_command(&exe_name)?;

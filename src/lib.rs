@@ -10,9 +10,10 @@ use std::{
 
 use anyhow::{bail, Context, Result};
 
-use crate::compiler::ModuleKind;
+use crate::{compiler::ModuleKind, sysroot_download::SysrootSpec};
 
 mod compiler;
+pub mod sysroot_download;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum LlvmLocation {
@@ -64,14 +65,17 @@ struct UserSettings {
 }
 
 impl UserSettings {
+    pub fn sysroot_prefix(&self) -> &Path {
+        self.sysroot_prefix
+            .as_deref()
+            .unwrap_or_else(|| Path::new("/lib/wasixcc/sysroot"))
+    }
+
     pub fn sysroot_location(&self) -> Result<PathBuf> {
         if let Some(sysroot) = self.sysroot_location.as_deref() {
             Ok(sysroot.to_owned())
         } else {
-            let prefix = self
-                .sysroot_prefix
-                .as_deref()
-                .unwrap_or(Path::new("/lib/wasixcc/sysroot"));
+            let prefix = self.sysroot_prefix();
 
             match (self.wasm_exceptions, self.pic) {
                 (true, true) => Ok(prefix.join("sysroot-ehpic")),
@@ -166,6 +170,13 @@ pub fn run_ranlib() -> Result<()> {
 pub fn get_sysroot() -> Result<PathBuf> {
     let (_, user_settings) = get_args_and_user_settings()?;
     user_settings.ensure_sysroot_location()
+}
+
+pub fn download_sysroot(sysroot_spec: SysrootSpec) -> Result<()> {
+    tracing::info!("Downloading sysroot: {:?}", sysroot_spec);
+
+    let (_, user_settings) = get_args_and_user_settings()?;
+    sysroot_download::download_sysroot(sysroot_spec, &user_settings)
 }
 
 fn separate_user_settings_args(args: Vec<String>) -> (Vec<String>, Vec<String>) {
