@@ -297,6 +297,8 @@ fn run() -> Result<()> {
 fn main() {
     setup_tracing();
 
+    tracing::debug!("Starting with CLI args: {:?}", std::env::args());
+
     match run() {
         Ok(()) => (),
         Err(e) => {

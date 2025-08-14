@@ -109,7 +109,7 @@ fn get_args_and_user_settings() -> Result<(Vec<String>, UserSettings)> {
 }
 
 fn run_command(mut command: Command) -> Result<()> {
-    tracing::info!("Executing build command: {command:?}");
+    tracing::debug!("Executing build command: {command:?}");
 
     let status = command
         .status()

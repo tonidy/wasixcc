@@ -136,7 +136,9 @@ pub(crate) fn run(args: Vec<String>, mut user_settings: UserSettings, run_cxx: b
 
     let (args, build_settings) = prepare_compiler_args(args, &mut user_settings, run_cxx)?;
 
-    tracing::info!("Compiler settings: {user_settings:?}");
+    tracing::debug!("User settings: {user_settings:?}");
+    tracing::debug!("Build settings: {build_settings:?}");
+    tracing::debug!("Compiler/linker args: {args:?}");
 
     if args.compiler_inputs.is_empty() && args.linker_inputs.is_empty() {
         // If there are no inputs, just pass everything through to clang.
@@ -161,25 +163,25 @@ pub(crate) fn run(args: Vec<String>, mut user_settings: UserSettings, run_cxx: b
         temp_dir: temp_dir.path().to_owned(),
     };
 
-    compile_inputs(&mut state)?;
+    if !state.args.compiler_inputs.is_empty() {
+        compile_inputs(&mut state)?;
+    }
 
     if state.user_settings.module_kind().is_binary() {
         link_inputs(&state)?;
-    }
 
-    // Run wasm-opt if:
-    //  * Explicitly enabled in the user settings, or
-    //  * It wasn't disabled in the compiler flags AND it wasn't explicitly disabled in the user settings
-    if state.user_settings.module_kind().is_binary()
-        && matches!(
+        // Run wasm-opt if:
+        //  * Explicitly enabled in the user settings, or
+        //  * It wasn't disabled in the compiler flags AND it wasn't explicitly disabled in the user settings
+        if matches!(
             (
                 state.build_settings.use_wasm_opt,
                 state.user_settings.run_wasm_opt,
             ),
             (_, Some(true)) | (true, None)
-        )
-    {
-        run_wasm_opt(&state)?;
+        ) {
+            run_wasm_opt(&state)?;
+        }
     }
 
     tracing::info!("Done");
@@ -198,7 +200,8 @@ pub(crate) fn link_only(args: Vec<String>, mut user_settings: UserSettings) -> R
         );
     }
 
-    tracing::info!("Linker settings: {user_settings:?}");
+    tracing::debug!("User settings: {user_settings:?}");
+    tracing::debug!("Linker args: {args:?}");
 
     if args.linker_inputs.is_empty() {
         // If there are no inputs, just pass everything through to wasm-ld.
