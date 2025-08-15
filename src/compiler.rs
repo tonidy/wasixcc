@@ -659,7 +659,7 @@ fn prepare_compiler_args(
             // Assume it's an input file
             let input = PathBuf::from(&arg);
             match input.extension().and_then(|ext| ext.to_str()) {
-                Some("a") | Some("o") | Some("obj") => {
+                Some("a") | Some("o") | Some("obj") | Some("so") => {
                     result.linker_inputs.push(PathBuf::from(arg));
                 }
                 _ => {
