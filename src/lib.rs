@@ -17,17 +17,32 @@ pub mod download;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum LlvmLocation {
-    FromPath(PathBuf),
-    FromSystem(u32), // The u32 is the version suffix, e.g. clang-20
+    UserProvided(PathBuf),
+    DefaultPath(PathBuf),
 }
 
 impl LlvmLocation {
     pub fn get_tool_path(&self, tool: &str) -> PathBuf {
         match self {
-            LlvmLocation::FromPath(path) => path.join("bin").join(tool),
-            LlvmLocation::FromSystem(version_suffix) => {
-                let tool_path = format!("{}-{}", tool, version_suffix);
-                PathBuf::from(tool_path)
+            // Never override a user-provided path...
+            Self::UserProvided(path) => path.join("bin").join(tool),
+
+            // ... but a default path with fallbacks is generally acceptable.
+            Self::DefaultPath(path) => {
+                if path.join("bin").exists() {
+                    path.join("bin").join(tool)
+                } else {
+                    // Default to running LLVM 21 binaries if the custom toolchain is not
+                    // installed.
+                    tracing::warn!(
+                        default_path = ?path.display(),
+                        "No LLVM location specified and no LLVM installation found in \
+                        default path. Using system LLVM version 21. Output may be broken.\
+                        Use `wasixcc --download-llvm` to download a compatible version."
+                    );
+                    let tool_path = format!("{}-{}", tool, 21);
+                    PathBuf::from(tool_path)
+                }
             }
         }
     }
@@ -206,24 +221,12 @@ fn separate_user_settings_args(args: Vec<String>) -> (Vec<String>, Vec<String>) 
 
 fn gather_user_settings(args: &[String]) -> Result<UserSettings> {
     let llvm_location = match try_get_user_setting_value("LLVM_LOCATION", args)? {
-        Some(path) => LlvmLocation::FromPath(path.into()),
-        None => {
-            let default_path = std::env::home_dir()
+        Some(path) => LlvmLocation::UserProvided(PathBuf::from(path)),
+        None => LlvmLocation::DefaultPath(
+            std::env::home_dir()
                 .map(|home| home.join(".wasixcc/llvm"))
-                .unwrap_or_else(|| PathBuf::from("/lib/wasixcc/llvm"));
-
-            if default_path.exists() {
-                LlvmLocation::FromPath(default_path)
-            } else {
-                tracing::warn!(
-                    default_path = ?default_path.display(),
-                    "No LLVM location specified and no LLVM installation found in \
-                    default path. Using system LLVM version 21. Output may be broken.\
-                    Use `wasixcc --download-llvm` to download a compatible version."
-                );
-                LlvmLocation::FromSystem(21)
-            }
-        }
+                .unwrap_or_else(|| PathBuf::from("/lib/wasixcc/llvm")),
+        ),
     };
 
     let sysroot_location = try_get_user_setting_value("SYSROOT", args)?;

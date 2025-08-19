@@ -122,21 +122,19 @@ pub(crate) fn download_sysroot(
 #[cfg(target_os = "linux")]
 pub(crate) fn download_llvm(tag_spec: TagSpec, user_settings: &UserSettings) -> anyhow::Result<()> {
     let target_dir = match user_settings.llvm_location {
-        crate::LlvmLocation::FromPath(ref path) => {
-            if !path.exists() {
-                std::fs::create_dir_all(path).with_context(|| {
-                    format!("Failed to create LLVM directory at {}", path.display())
-                })?;
-            }
-            path.to_path_buf()
-        }
-        crate::LlvmLocation::FromSystem(_) => {
-            bail!(
-                "To download LLVM, a location must be specified via `-sLLVM_LOCATION` or \
-                the `WASIXCC_LLVM_LOCATION` environment variable"
-            );
-        }
+        crate::LlvmLocation::DefaultPath(ref path)
+        | crate::LlvmLocation::UserProvided(ref path) => path,
     };
+
+    if !target_dir.exists() {
+        std::fs::create_dir_all(target_dir).with_context(|| {
+            format!(
+                "Failed to create LLVM directory at {}",
+                target_dir.display()
+            )
+        })?;
+    }
+    let target_dir = target_dir.to_path_buf();
 
     let mut headers = HeaderMap::new();
 
