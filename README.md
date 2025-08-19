@@ -55,6 +55,8 @@ Run `wasixcc --help` for comprehensive usage instructions.
 | `-v`, `--version`              | Print version information                                          |
 | `--install-executables <PATH>` | Install executables to specified path                              |
 | `--download-sysroot <TAG>`     | Download and install WASIX libc sysroot ('latest' or specific tag) |
+| `--download-llvm <TAG>`        | Download and install LLVM toolchain ('latest' or specific tag)     |
+| `--download-all`               | Download and install latest sysroot and LLVM toolchain             |
 | `--print-sysroot`              | Print current sysroot location                                     |
 | `-s[CONFIG]=[VALUE]`           | Set configuration values (see below)                               |
 
