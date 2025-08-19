@@ -5,6 +5,7 @@ use reqwest::header::HeaderMap;
 
 use crate::UserSettings;
 
+const LLVM_REPO: &str = "wasix-org/llvm-project";
 const SYSROOT_REPO: &str = "wasix-org/wasix-libc";
 
 #[derive(serde::Deserialize)]
@@ -19,48 +20,52 @@ struct GithubAsset {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum SysrootSpec {
+pub enum TagSpec {
     Latest,
     Tag(String),
 }
 
-impl FromStr for SysrootSpec {
+impl FromStr for TagSpec {
     type Err = anyhow::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         if s == "latest" {
-            Ok(SysrootSpec::Latest)
+            Ok(TagSpec::Latest)
         } else if s.starts_with('v') {
-            Ok(SysrootSpec::Tag(s.to_string()))
+            Ok(TagSpec::Tag(s.to_string()))
         } else {
-            bail!("Invalid sysroot specification: `{s}`. Use 'latest' or a tag starting with 'v'.");
+            bail!("Invalid tag specification: `{s}`. Use 'latest' or a tag starting with 'v'.");
         }
     }
 }
 
-impl SysrootSpec {
-    fn display_github_url_postfix(&self) -> SysrootSpecGithubUrlPostfix {
-        SysrootSpecGithubUrlPostfix { spec: self }
+impl TagSpec {
+    fn display_github_url_postfix(&self) -> TagSpecGithubUrlPostfix {
+        TagSpecGithubUrlPostfix { spec: self }
     }
 }
 
-struct SysrootSpecGithubUrlPostfix<'a> {
-    spec: &'a SysrootSpec,
+struct TagSpecGithubUrlPostfix<'a> {
+    spec: &'a TagSpec,
 }
 
-impl Display for SysrootSpecGithubUrlPostfix<'_> {
+impl Display for TagSpecGithubUrlPostfix<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self.spec {
-            SysrootSpec::Latest => write!(f, "latest"),
-            SysrootSpec::Tag(tag) => write!(f, "tags/{}", tag),
+            TagSpec::Latest => write!(f, "latest"),
+            TagSpec::Tag(tag) => write!(f, "tags/{}", tag),
         }
     }
 }
 
 pub(crate) fn download_sysroot(
-    sysroot_spec: SysrootSpec,
+    tag_spec: TagSpec,
     user_settings: &UserSettings,
 ) -> anyhow::Result<()> {
+    if user_settings.sysroot_location.is_some() {
+        tracing::warn!("SYSROOT_LOCATION is ignored when downloading sysroot");
+    }
+
     let mut headers = HeaderMap::new();
 
     // Use API token if specified via env var.
@@ -81,7 +86,7 @@ pub(crate) fn download_sysroot(
 
     let release_url = format!(
         "https://api.github.com/repos/{SYSROOT_REPO}/releases/{}",
-        sysroot_spec.display_github_url_postfix()
+        tag_spec.display_github_url_postfix()
     );
 
     eprintln!("Retrieving release info from {release_url} ...");
@@ -105,15 +110,106 @@ pub(crate) fn download_sysroot(
             .find(|a| a.name == asset_name)
             .with_context(|| format!("Could not find asset '{asset_name}' in release"))?;
 
-        download_and_unpack(asset, user_settings.sysroot_prefix(), &client).with_context(|| {
-            format!("Failed to download and unpack sysroot asset '{asset_name}'")
-        })?;
+        download_and_unpack_sysroot(asset, &user_settings.sysroot_prefix, &client).with_context(
+            || format!("Failed to download and unpack sysroot asset '{asset_name}'"),
+        )?;
     }
 
     Ok(())
 }
 
-fn download_and_unpack(
+// TODO: support other operating systems in the future.
+#[cfg(target_os = "linux")]
+pub(crate) fn download_llvm(tag_spec: TagSpec, user_settings: &UserSettings) -> anyhow::Result<()> {
+    let target_dir = match user_settings.llvm_location {
+        crate::LlvmLocation::FromPath(ref path) => {
+            if !path.exists() {
+                std::fs::create_dir_all(path).with_context(|| {
+                    format!("Failed to create LLVM directory at {}", path.display())
+                })?;
+            }
+            path.to_path_buf()
+        }
+        crate::LlvmLocation::FromSystem(_) => {
+            bail!(
+                "To download LLVM, a location must be specified via `-sLLVM_LOCATION` or \
+                the `WASIXCC_LLVM_LOCATION` environment variable"
+            );
+        }
+    };
+
+    let mut headers = HeaderMap::new();
+
+    // Use API token if specified via env var.
+    // Prevents 403 errors when IP is throttled by Github API.
+    let gh_token = std::env::var("GITHUB_TOKEN")
+        .ok()
+        .map(|x| x.trim().to_string())
+        .filter(|x| !x.is_empty());
+
+    if let Some(token) = gh_token {
+        headers.insert("authorization", format!("Bearer {token}").parse()?);
+    }
+
+    let client = reqwest::blocking::Client::builder()
+        .default_headers(headers)
+        .user_agent("wasixcc")
+        .build()?;
+
+    let release_url = format!(
+        "https://api.github.com/repos/{LLVM_REPO}/releases/{}",
+        tag_spec.display_github_url_postfix()
+    );
+
+    eprintln!("Retrieving release info from {release_url} ...");
+
+    let release: GithubReleaseData = client
+        .get(&release_url)
+        .send()?
+        .error_for_status()
+        .context("Could not download release info")?
+        .json()
+        .context("Could not deserialize release info")?;
+
+    let asset_name = "LLVM-Linux-x86_64.tar.gz";
+    let asset = release
+        .assets
+        .iter()
+        .find(|a| a.name == asset_name)
+        .with_context(|| format!("Could not find asset '{asset_name}' in release"))?;
+
+    download_asset(asset, &target_dir, &client)
+        .with_context(|| format!("Failed to download and unpack sysroot asset '{asset_name}'"))?;
+
+    {
+        use std::os::unix::fs::PermissionsExt;
+
+        for entry in
+            std::fs::read_dir(target_dir.join("bin")).context("Failed to read bin directory")?
+        {
+            let entry = entry.context("Failed to read bin directory entry")?;
+            if entry
+                .file_type()
+                .context("Failed to get file type of bin directory entry")?
+                .is_file()
+            {
+                let mut perms = entry.metadata()?.permissions();
+                perms.set_mode(perms.mode() | 0o110); // Set executable bits
+                std::fs::set_permissions(entry.path(), perms)?;
+            }
+        }
+    }
+
+    eprintln!(
+        "Downloaded LLVM asset '{}' to '{}'",
+        asset.name,
+        target_dir.display()
+    );
+
+    Ok(())
+}
+
+fn download_asset(
     asset: &GithubAsset,
     target_dir: &Path,
     client: &reqwest::blocking::Client,
@@ -130,12 +226,22 @@ fn download_and_unpack(
     let decoder = flate2::read::GzDecoder::new(res);
     let mut archive = tar::Archive::new(decoder);
 
+    archive
+        .unpack(target_dir)
+        .context("Failed to unpack asset")?;
+
+    Ok(())
+}
+
+fn download_and_unpack_sysroot(
+    asset: &GithubAsset,
+    target_dir: &Path,
+    client: &reqwest::blocking::Client,
+) -> anyhow::Result<()> {
     // Unpack to a temp dir, since we need to re-organize the contents.
     let temp_dir = tempfile::TempDir::new().context("Failed to create temporary directory")?;
 
-    archive
-        .unpack(temp_dir.path())
-        .context("Failed to unpack asset")?;
+    download_asset(asset, temp_dir.path(), client)?;
 
     // A few sanity checks can't hurt...
     let dirs = std::fs::read_dir(temp_dir.path())

@@ -15,46 +15,46 @@ name = "wasixcc"
 module = "wasixcc"
 runner = "https://webc.org/runner/wasi"
 [command.annotations.wasi]
-env = ["WASIXCC_SYSROOT_PREFIX=/sysroot", "WASIXCC_LLVM_LOCATION=/bin"]
+env = ["WASIXCC_SYSROOT_PREFIX=/sysroot", "WASIXCC_LLVM_LOCATION=/"]
 
 [[command]]
 name = "wasix++"
 module = "wasixcc"
 runner = "https://webc.org/runner/wasi"
 [command.annotations.wasi]
-env = ["WASIXCC_SYSROOT_PREFIX=/sysroot", "WASIXCC_LLVM_LOCATION=/bin"]
+env = ["WASIXCC_SYSROOT_PREFIX=/sysroot", "WASIXCC_LLVM_LOCATION=/"]
 
 [[command]]
 name = "wasixcc++"
 module = "wasixcc"
 runner = "https://webc.org/runner/wasi"
 [command.annotations.wasi]
-env = ["WASIXCC_SYSROOT_PREFIX=/sysroot", "WASIXCC_LLVM_LOCATION=/bin"]
+env = ["WASIXCC_SYSROOT_PREFIX=/sysroot", "WASIXCC_LLVM_LOCATION=/"]
 
 [[command]]
 name = "wasixld"
 module = "wasixcc"
 runner = "https://webc.org/runner/wasi"
 [command.annotations.wasi]
-env = ["WASIXCC_SYSROOT_PREFIX=/sysroot", "WASIXCC_LLVM_LOCATION=/bin"]
+env = ["WASIXCC_SYSROOT_PREFIX=/sysroot", "WASIXCC_LLVM_LOCATION=/"]
 
 [[command]]
 name = "wasixar"
 module = "wasixcc"
 runner = "https://webc.org/runner/wasi"
 [command.annotations.wasi]
-env = ["WASIXCC_LLVM_LOCATION=/bin"]
+env = ["WASIXCC_LLVM_LOCATION=/"]
 
 [[command]]
 name = "wasixnm"
 module = "wasixcc"
 runner = "https://webc.org/runner/wasi"
 [command.annotations.wasi]
-env = ["WASIXCC_LLVM_LOCATION=/bin"]
+env = ["WASIXCC_LLVM_LOCATION=/"]
 
 [[command]]
 name = "wasixranlib"
 module = "wasixcc"
 runner = "https://webc.org/runner/wasi"
 [command.annotations.wasi]
-env = ["WASIXCC_LLVM_LOCATION=/bin"]
+env = ["WASIXCC_LLVM_LOCATION=/"]

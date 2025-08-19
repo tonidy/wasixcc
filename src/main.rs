@@ -3,7 +3,7 @@ use std::{path::PathBuf, str::FromStr};
 use anyhow::{bail, Context, Result};
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
-use wasixcc::{download_sysroot, sysroot_download::SysrootSpec};
+use wasixcc::download::TagSpec;
 
 #[cfg(unix)]
 const COMMANDS: &[&str] = &["cc", "++", "cc++", "ar", "nm", "ranlib", "ld"];
@@ -12,7 +12,9 @@ enum WasixccCommand {
     Help,
     Version,
     InstallExecutables(PathBuf),
-    DownloadSysroot(SysrootSpec),
+    DownloadSysroot(TagSpec),
+    DownloadLlvm(TagSpec),
+    DownloadAll,
     PrintSysroot,
     RunTool,
 }
@@ -126,6 +128,15 @@ Options:
                                  downloaded. The downloaded sysroot will be
                                  unpacked into the directory pointed to by
                                  the SYSROOT_PREFIX setting.
+  --download-llvm <TAG>          Download and install the LLVM toolchain.
+                                 The tag can be 'latest' or a specific tag
+                                 such as 'v2025-01-01.1'. If the tag is
+                                 omitted, the latest version will be
+                                 downloaded. The downloaded toolchain will be
+                                 unpacked into the directory pointed to by
+                                 the LLVM_LOCATION setting.
+  --download-all                 Download the latest version of both the 
+                                 sysroot and the LLVM toolchain.
   --print-sysroot                Print sysroot location corresponding to
                                  current build configuration
 
@@ -136,10 +147,13 @@ The following configuration options are available:");
   SYSROOT_PREFIX=<PREFIX>  Set the sysroot prefix, which is expected to
                            contain 3 subdirectories: 'sysroot',
                            'sysroot-eh', and 'sysroot-ehpic'.
-  LLVM_LOCATION=<PATH>     Set the location of LLVM binaries which will be
-                           invoked without a version suffix. If this option
-                           is left out, LLVM binaries will be invoked with
-                           a -20 version suffix (e.g. clang-20).
+  LLVM_LOCATION=<PATH>     Set the location of LLVM toolchain which will be
+                           invoked without a version suffix. The path must
+                           point to the installation directory of the
+                           toolchain, NOT the bin directory inside it; tools
+                           will be executed from LLVM_LOCATION/bin/tool-name.
+                           If this option is left out, LLVM binaries will be
+                           invoked with a -21 version suffix (e.g. clang-21).
   COMPILER_FLAGS=<FLAGS>   Extra flags to pass to the compiler, separated
                            by colons (':')
   COMPILER_POST_FLAGS=<FLAGS>
@@ -238,18 +252,34 @@ fn get_wasixcc_command(exe_name: &str) -> WasixccCommand {
             }
 
             "--download-sysroot" => {
-                let sysroot_spec = match args.next() {
-                    Some(spec) => match SysrootSpec::from_str(&spec) {
+                let tag_spec = match args.next() {
+                    Some(spec) => match TagSpec::from_str(&spec) {
                         Ok(x) => x,
                         Err(e) => {
                             eprintln!("{e}");
                             std::process::exit(1);
                         }
                     },
-                    None => SysrootSpec::Latest,
+                    None => TagSpec::Latest,
                 };
-                WasixccCommand::DownloadSysroot(sysroot_spec)
+                WasixccCommand::DownloadSysroot(tag_spec)
             }
+
+            "--download-llvm" => {
+                let tag_spec = match args.next() {
+                    Some(spec) => match TagSpec::from_str(&spec) {
+                        Ok(x) => x,
+                        Err(e) => {
+                            eprintln!("{e}");
+                            std::process::exit(1);
+                        }
+                    },
+                    None => TagSpec::Latest,
+                };
+                WasixccCommand::DownloadLlvm(tag_spec)
+            }
+
+            "--download-all" => WasixccCommand::DownloadAll,
 
             "--print-sysroot" => WasixccCommand::PrintSysroot,
 
@@ -277,7 +307,13 @@ fn run() -> Result<()> {
             Ok(())
         }
         WasixccCommand::InstallExecutables(path) => install_executables(path),
-        WasixccCommand::DownloadSysroot(sysroot_spec) => download_sysroot(sysroot_spec),
+        WasixccCommand::DownloadSysroot(tag_spec) => wasixcc::download_sysroot(tag_spec),
+        WasixccCommand::DownloadLlvm(tag_spec) => wasixcc::download_llvm(tag_spec),
+        WasixccCommand::DownloadAll => {
+            wasixcc::download_llvm(TagSpec::Latest)?;
+            wasixcc::download_sysroot(TagSpec::Latest)?;
+            Ok(())
+        }
         WasixccCommand::PrintSysroot => print_sysroot(),
         WasixccCommand::RunTool => {
             let command_name = get_command(&exe_name)?;

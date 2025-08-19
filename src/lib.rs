@@ -10,10 +10,10 @@ use std::{
 
 use anyhow::{bail, Context, Result};
 
-use crate::{compiler::ModuleKind, sysroot_download::SysrootSpec};
+use crate::{compiler::ModuleKind, download::TagSpec};
 
 mod compiler;
-pub mod sysroot_download;
+pub mod download;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum LlvmLocation {
@@ -24,7 +24,7 @@ enum LlvmLocation {
 impl LlvmLocation {
     pub fn get_tool_path(&self, tool: &str) -> PathBuf {
         match self {
-            LlvmLocation::FromPath(path) => path.join(tool),
+            LlvmLocation::FromPath(path) => path.join("bin").join(tool),
             LlvmLocation::FromSystem(version_suffix) => {
                 let tool_path = format!("{}-{}", tool, version_suffix);
                 PathBuf::from(tool_path)
@@ -46,7 +46,7 @@ impl Default for LlvmLocation {
 #[cfg_attr(test, derive(Default))]
 struct UserSettings {
     sysroot_location: Option<PathBuf>,          // key name: SYSROOT
-    sysroot_prefix: Option<PathBuf>,            // key name: SYSROOT_PREFIX
+    sysroot_prefix: PathBuf,                    // key name: SYSROOT_PREFIX
     llvm_location: LlvmLocation,                // key name: LLVM_LOCATION
     extra_compiler_flags: Vec<String>,          // key name: COMPILER_FLAGS
     extra_compiler_post_flags: Vec<String>,     // key name: COMPILER_POST_FLAGS
@@ -65,25 +65,17 @@ struct UserSettings {
 }
 
 impl UserSettings {
-    pub fn sysroot_prefix(&self) -> &Path {
-        self.sysroot_prefix
-            .as_deref()
-            .unwrap_or_else(|| Path::new("/lib/wasixcc/sysroot"))
-    }
-
     pub fn sysroot_location(&self) -> Result<PathBuf> {
         if let Some(sysroot) = self.sysroot_location.as_deref() {
             Ok(sysroot.to_owned())
         } else {
-            let prefix = self.sysroot_prefix();
-
             match (self.wasm_exceptions, self.pic) {
-                (true, true) => Ok(prefix.join("sysroot-ehpic")),
-                (true, false) => Ok(prefix.join("sysroot-eh")),
+                (true, true) => Ok(self.sysroot_prefix.join("sysroot-ehpic")),
+                (true, false) => Ok(self.sysroot_prefix.join("sysroot-eh")),
                 (false, true) => {
                     bail!("PIC without wasm exceptions is not a valid build configuration")
                 }
-                (false, false) => Ok(prefix.join("sysroot")),
+                (false, false) => Ok(self.sysroot_prefix.join("sysroot")),
             }
         }
     }
@@ -172,11 +164,24 @@ pub fn get_sysroot() -> Result<PathBuf> {
     user_settings.ensure_sysroot_location()
 }
 
-pub fn download_sysroot(sysroot_spec: SysrootSpec) -> Result<()> {
-    tracing::info!("Downloading sysroot: {:?}", sysroot_spec);
+pub fn download_sysroot(tag_spec: TagSpec) -> Result<()> {
+    tracing::info!("Downloading sysroot: {:?}", tag_spec);
 
     let (_, user_settings) = get_args_and_user_settings()?;
-    sysroot_download::download_sysroot(sysroot_spec, &user_settings)
+    download::download_sysroot(tag_spec, &user_settings)
+}
+
+#[cfg(target_os = "linux")]
+pub fn download_llvm(tag_spec: TagSpec) -> Result<()> {
+    tracing::info!("Downloading LLVM: {:?}", tag_spec);
+
+    let (_, user_settings) = get_args_and_user_settings()?;
+    download::download_llvm(tag_spec, &user_settings)
+}
+
+#[cfg(not(target_os = "linux"))]
+pub fn download_llvm(_tag_spec: TagSpec) -> Result<()> {
+    bail!("LLVM download is only supported on Linux");
 }
 
 fn separate_user_settings_args(args: Vec<String>) -> (Vec<String>, Vec<String>) {
@@ -202,12 +207,31 @@ fn separate_user_settings_args(args: Vec<String>) -> (Vec<String>, Vec<String>) 
 fn gather_user_settings(args: &[String]) -> Result<UserSettings> {
     let llvm_location = match try_get_user_setting_value("LLVM_LOCATION", args)? {
         Some(path) => LlvmLocation::FromPath(path.into()),
-        None => LlvmLocation::FromSystem(20),
+        None => {
+            let default_path = std::env::home_dir()
+                .map(|home| home.join(".wasixcc/llvm"))
+                .unwrap_or_else(|| PathBuf::from("/lib/wasixcc/llvm"));
+
+            if default_path.exists() {
+                LlvmLocation::FromPath(default_path)
+            } else {
+                tracing::warn!(
+                    default_path = ?default_path.display(),
+                    "No LLVM location specified and no LLVM installation found in \
+                    default path. Using system LLVM version 21. Output may be broken.\
+                    Use `wasixcc --download-llvm` to download a compatible version."
+                );
+                LlvmLocation::FromSystem(21)
+            }
+        }
     };
 
     let sysroot_location = try_get_user_setting_value("SYSROOT", args)?;
 
-    let sysroot_prefix = try_get_user_setting_value("SYSROOT_PREFIX", args)?;
+    let sysroot_prefix = try_get_user_setting_value("SYSROOT_PREFIX", args)?
+        .map(PathBuf::from)
+        .or_else(|| std::env::home_dir().map(|home| home.join(".wasixcc/sysroot")))
+        .unwrap_or_else(|| PathBuf::from("/lib/wasixcc/sysroot"));
 
     let extra_compiler_flags = match try_get_user_setting_value("COMPILER_FLAGS", args)? {
         Some(flags) => read_string_list_user_setting(&flags),
@@ -304,7 +328,7 @@ fn gather_user_settings(args: &[String]) -> Result<UserSettings> {
 
     Ok(UserSettings {
         sysroot_location: sysroot_location.map(Into::into),
-        sysroot_prefix: sysroot_prefix.map(Into::into),
+        sysroot_prefix: sysroot_prefix.into(),
         llvm_location,
         extra_compiler_flags,
         extra_compiler_post_flags,
