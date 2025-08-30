@@ -567,7 +567,7 @@ fn run_wasm_opt(state: &State) -> Result<()> {
         }
     } else {
         command.arg(output_path);
-    run_command(command)
+        run_command(command)
     }
 }
 
@@ -617,10 +617,10 @@ fn prepare_compiler_args(
 
     let mut iter = extra_flags
         .into_iter()
-        .chain(extra_flags2.into_iter())
+        .chain(extra_flags2)
         .chain(args)
-        .chain(extra_post_flags.into_iter())
-        .chain(extra_post_flags2.into_iter());
+        .chain(extra_post_flags)
+        .chain(extra_post_flags2);
 
     while let Some(arg) = iter.next() {
         if let Some(arg) = arg.strip_prefix("-Wl,") {
@@ -944,14 +944,10 @@ mod tests {
 
     #[test]
     fn test_sysroot_prefix() {
-        let mut us = UserSettings::default();
-
-        assert_eq!(
-            us.sysroot_location().unwrap(),
-            PathBuf::from("/lib/wasixcc/sysroot/sysroot")
-        );
-
-        us.sysroot_prefix = Some(PathBuf::from("/xxx"));
+        let mut us = UserSettings {
+            sysroot_prefix: PathBuf::from("/xxx"),
+            ..Default::default()
+        };
         assert_eq!(
             us.sysroot_location().unwrap(),
             PathBuf::from("/xxx/sysroot")

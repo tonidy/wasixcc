@@ -51,7 +51,7 @@ impl LlvmLocation {
 #[cfg(test)]
 impl Default for LlvmLocation {
     fn default() -> Self {
-        LlvmLocation::FromSystem(0) // Default to clang-20
+        LlvmLocation::DefaultPath(PathBuf::new())
     }
 }
 
@@ -351,7 +351,7 @@ fn gather_user_settings(args: &[String]) -> Result<UserSettings> {
 
     Ok(UserSettings {
         sysroot_location: sysroot_location.map(Into::into),
-        sysroot_prefix: sysroot_prefix.into(),
+        sysroot_prefix,
         llvm_location,
         extra_compiler_flags,
         extra_compiler_post_flags,
@@ -537,7 +537,7 @@ mod tests {
         perm.set_mode(0o755);
         fs::set_permissions(&tool_path, perm).unwrap();
         let user_settings = UserSettings {
-            llvm_location: LlvmLocation::FromPath(bin.clone()),
+            llvm_location: LlvmLocation::UserProvided(tmp.path().to_path_buf()),
             ..Default::default()
         };
         run_tool_with_passthrough_args("dummytool", vec!["X".into(), "Y".into()], user_settings)

@@ -40,7 +40,7 @@ impl FromStr for TagSpec {
 }
 
 impl TagSpec {
-    fn display_github_url_postfix(&self) -> TagSpecGithubUrlPostfix {
+    fn display_github_url_postfix<'a>(&'a self) -> TagSpecGithubUrlPostfix<'a> {
         TagSpecGithubUrlPostfix { spec: self }
     }
 }

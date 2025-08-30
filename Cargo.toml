@@ -48,3 +48,8 @@ tower-service = { git = "https://github.com/wasix-org/tower.git", branch = "wasi
 [features]
 bin = ["tracing-subscriber"]
 tracing-subscriber = ["dep:tracing-subscriber"]
+
+[lints.rust]
+unexpected_cfgs = { level = "allow", check-cfg = [
+    'cfg(target_vendor, values("wasmer"))',
+] }
