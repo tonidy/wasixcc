@@ -106,7 +106,11 @@ impl UserSettings {
     }
 
     pub fn module_kind(&self) -> ModuleKind {
-        self.module_kind.unwrap_or(ModuleKind::StaticMain)
+        match (self.module_kind, self.pic) {
+            (Some(kind), _) => kind,
+            (None, true) => ModuleKind::DynamicMain,
+            (None, false) => ModuleKind::StaticMain,
+        }
     }
 }
 
