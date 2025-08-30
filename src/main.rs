@@ -199,6 +199,15 @@ The following configuration options are available:");
                            * `--asyncify` for modules without exception
                                  handling enabled, required for forks and
                                  setjmp/longjmp to work
+  WASM_OPT_PRESERVE_UNOPTIMIZED=<BOOL>
+                           Whether to preserve a copy of the unoptimized
+                           artifact before running wasm-opt. If the wasm-opt
+                           invocation fails, the unoptimized artifact will be
+                           preserved at a temporary location and its path
+                           will be printed to stderr. This is useful for
+                           debugging wasm-opt failures. By default, wasm-opt
+                           runs in-place and the unoptimized artifact is
+                           deleted.
   MODULE_KIND=<KIND>       The kind of module to generate. {exe_name} can
                            guess this setting most of the time based on
                            compiler/linker flags. Valid values are:

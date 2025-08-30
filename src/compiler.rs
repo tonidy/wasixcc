@@ -540,11 +540,32 @@ fn run_wasm_opt(state: &State) -> Result<()> {
     command.args(WASM_OPT_ENABLED_FEATURES);
 
     let output_path = output_path(state);
-    command.arg(output_path);
+
     command.arg("-o");
     command.arg(output_path);
 
+    if state.user_settings.wasm_opt_preserve_unoptimized {
+        let tempdir = tempfile::TempDir::new()
+            .context("Failed to create temporary directory for wasm-opt")?;
+        let unoptimized_path = tempdir.path().join("unoptimized.wasm");
+        std::fs::copy(output_path, &unoptimized_path)
+            .context("Failed to create copy of unoptimized artifact before running wasm-opt")?;
+        command.arg(&unoptimized_path);
+        match run_command(command) {
+            Ok(()) => Ok(()),
+            Err(e) => {
+                let kept_path = tempdir.keep();
+                eprintln!(
+                    "failed to run wasm-opt, preserving unoptimized artifact at {}",
+                    kept_path.display()
+                );
+                Err(e)
+            }
+        }
+    } else {
+        command.arg(output_path);
     run_command(command)
+    }
 }
 
 fn prepare_compiler_args(

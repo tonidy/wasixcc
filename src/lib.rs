@@ -73,6 +73,7 @@ struct UserSettings {
     run_wasm_opt: Option<bool>,                 // key name: RUN_WASM_OPT
     wasm_opt_flags: Vec<String>,                // key name: WASM_OPT_FLAGS
     wasm_opt_suppress_default: bool,            // key name: WASM_OPT_SUPPRESS_DEFAULT
+    wasm_opt_preserve_unoptimized: bool,        // key name: WASM_OPT_PRESERVE_UNOPTIMIZED
     module_kind: Option<ModuleKind>,            // key name: MODULE_KIND
     wasm_exceptions: bool,                      // key name: WASM_EXCEPTIONS
     pic: bool,                                  // key name: PIC
@@ -300,6 +301,14 @@ fn gather_user_settings(args: &[String]) -> Result<UserSettings> {
             None => false,
         };
 
+    let wasm_opt_preserve_unoptimized =
+        match try_get_user_setting_value("WASM_OPT_PRESERVE_UNOPTIMIZED", args)? {
+            Some(value) => read_bool_user_setting(&value).with_context(|| {
+                format!("Invalid value {value} for WASM_OPT_PRESERVE_UNOPTIMIZED")
+            })?,
+            None => false,
+        };
+
     let module_kind = match try_get_user_setting_value("MODULE_KIND", args)? {
         Some(kind) => Some(match kind.as_str() {
             "static-main" => ModuleKind::StaticMain,
@@ -343,6 +352,7 @@ fn gather_user_settings(args: &[String]) -> Result<UserSettings> {
         run_wasm_opt,
         wasm_opt_flags,
         wasm_opt_suppress_default,
+        wasm_opt_preserve_unoptimized,
         module_kind,
         wasm_exceptions,
         pic,
