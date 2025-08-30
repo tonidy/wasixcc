@@ -175,6 +175,11 @@ The following configuration options are available:");
                            Same as COMPILER_POST_FLAGS, but only for C++ files.
   LINKER_FLAGS=<FLAGS>     Extra flags to pass to the linker, separated
                            by colons (':')
+  INCLUDE_CPP_SYMBOLS=<BOOL>
+                           Whether to include C++ symbols when building a
+                           dynamic main module from C sources. This is useful
+                           when the main is expected to be able to load side
+                           modules implemented in C++.
   RUN_WASM_OPT=<BOOL>      Whether to run `wasm-opt` on the output of the
                            compiler. If this setting is left out, {exe_name}
                            will look at compiler flags to determine whether

@@ -422,8 +422,11 @@ fn link_inputs(state: &State) -> Result<()> {
             "-lutil",
         ]);
 
-        if state.cxx {
-            command.args(["-lc++", "-lc++abi", "-lunwind"]);
+        if state.cxx || state.user_settings.include_cpp_symbols {
+            command.args(["-lc++", "-lc++abi"]);
+            if state.user_settings.wasm_exceptions {
+                command.arg("-lunwind");
+            }
         }
     }
 

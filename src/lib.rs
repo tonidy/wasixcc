@@ -70,6 +70,7 @@ struct UserSettings {
     extra_compiler_flags_cxx: Vec<String>,      // key name: COMPILER_FLAGS_CXX
     extra_compiler_post_flags_cxx: Vec<String>, // key name: COMPILER_POST_FLAGS_CXX
     extra_linker_flags: Vec<String>,            // key name: LINKER_FLAGS
+    include_cpp_symbols: bool,                  // key name: INCLUDE_CPP_SYMBOLS
     run_wasm_opt: Option<bool>,                 // key name: RUN_WASM_OPT
     wasm_opt_flags: Vec<String>,                // key name: WASM_OPT_FLAGS
     wasm_opt_suppress_default: bool,            // key name: WASM_OPT_SUPPRESS_DEFAULT
@@ -274,6 +275,12 @@ fn gather_user_settings(args: &[String]) -> Result<UserSettings> {
         None => vec![],
     };
 
+    let include_cpp_symbols = match try_get_user_setting_value("INCLUDE_CPP_SYMBOLS", args)? {
+        Some(value) => read_bool_user_setting(&value)
+            .with_context(|| format!("Invalid value {value} for INCLUDE_CPP_SYMBOLS"))?,
+        None => false,
+    };
+
     let wasm_opt_flags = match try_get_user_setting_value("WASM_OPT_FLAGS", args)? {
         Some(flags) => read_string_list_user_setting(&flags),
         None => vec![],
@@ -349,6 +356,7 @@ fn gather_user_settings(args: &[String]) -> Result<UserSettings> {
         extra_compiler_flags_cxx,
         extra_compiler_post_flags_cxx,
         extra_linker_flags,
+        include_cpp_symbols,
         run_wasm_opt,
         wasm_opt_flags,
         wasm_opt_suppress_default,
