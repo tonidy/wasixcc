@@ -32,9 +32,9 @@ flags for the WASIX platform.
    ```bash
    sudo wasixcc --install-executables /usr/local/bin
    ```
-4. Optionally, download the latest WASIX sysroot if you don't have it already:
+4. Optionally, download the latest LLVM toolchain and WASIX sysroot if you don't have them already:
    ```bash
-   wasixcc --download-sysroot
+   wasixcc --download-all
    ```
 
 ## Usage
@@ -56,7 +56,7 @@ Run `wasixcc --help` for comprehensive usage instructions.
 | `--install-executables <PATH>` | Install executables to specified path                              |
 | `--download-sysroot <TAG>`     | Download and install WASIX libc sysroot ('latest' or specific tag) |
 | `--download-llvm <TAG>`        | Download and install LLVM toolchain ('latest' or specific tag)     |
-| `--download-all`               | Download and install latest sysroot and LLVM toolchain             |
+| `--download-all`               | Download and install the latest sysroot and LLVM toolchain         |
 | `--print-sysroot`              | Print current sysroot location                                     |
 | `-s[CONFIG]=[VALUE]`           | Set configuration values (see below)                               |
 
@@ -125,14 +125,15 @@ directly, such as when running through CMake.
 ## Build configurations
 
 `wasixcc` supports 3 primary build configurations. The configurations are mainly
-differentiated based on where they can run and what language features they support, and how `setjmp`/`longjmp` is handled.
+differentiated based on where they can run and what language features they support,
+and how `setjmp`/`longjmp` is handled.
 
 - The default configuration; this configuration can run anywhere, but [relies on
   `asyncify`](https://github.com/WebAssembly/binaryen/blob/main/src/passes/Asyncify.cpp)
   for `setjmp`/`longjmp` support. `asyncify` has considerable performance
   implications, and should be avoided where possible.
-  Support for C++ exceptions in this configuration has not been tested and
-  is likely to be broken.
+  Support for C++ exceptions in this configuration has not been tested, and
+  it is likely to be broken.
 
 - The EH configuration uses the [WASM Exception Handling Proposal](https://github.com/WebAssembly/exception-handling/blob/main/proposals/exception-handling/Exceptions.md)
   to support `setjmp`/`longjmp`. This configuration can only run on EH-enabled
@@ -191,7 +192,6 @@ export \
   AR=wasixar \
   NM=wasixnm \
   RANLIB=wasixranlib
-
 
 # Disable wasm-opt during configuration...
 WASIXCC_RUN_WASM_OPT=no \
