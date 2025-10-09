@@ -383,6 +383,7 @@ fn link_inputs(state: &State) -> Result<()> {
         "--export=__tls_size",
         "--export=__tls_align",
         "--export=__tls_base",
+        "--export-if-defined=__indirect_function_table", // needed for reflection and call_dynamic
     ]);
 
     if module_kind.is_executable() {
