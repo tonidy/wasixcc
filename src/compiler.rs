@@ -31,9 +31,10 @@ static CLANG_FLAGS_WITH_ARGS: LazyLock<HashSet<&str>> = LazyLock::new(|| {
         "-l",
         "-L",
         "-include-pch",
+        "-target",
+        "--sysroot",
         "-u",
         "-undefined",
-        "-target",
         "-Xlinker",
         "-Xclang",
         "-z",
@@ -98,7 +99,6 @@ pub(crate) enum OptLevel {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum DebugLevel {
-    None,
     G0,
     G1,
     G2,
@@ -293,8 +293,11 @@ fn compile_inputs(state: &mut State) -> Result<()> {
         command_args.push(OsStr::new("-ftls-model=local-exec"));
     }
 
-    if state.build_settings.debug_level != DebugLevel::None {
-        command_args.push(OsStr::new("-g"));
+    match state.build_settings.debug_level {
+        DebugLevel::G0 => (),
+        DebugLevel::G1 => command_args.push(OsStr::new("-g1")),
+        DebugLevel::G2 => command_args.push(OsStr::new("-g2")),
+        DebugLevel::G3 => command_args.push(OsStr::new("-g3")),
     }
 
     for arg in &state.args.compiler_args {
@@ -533,7 +536,7 @@ fn run_wasm_opt(state: &State) -> Result<()> {
     }
 
     match state.build_settings.debug_level {
-        DebugLevel::None | DebugLevel::G0 => (),
+        DebugLevel::G0 => (),
         DebugLevel::G1 | DebugLevel::G2 | DebugLevel::G3 => {
             command.arg("-g");
         }
@@ -807,7 +810,10 @@ fn update_build_settings_from_arg(
             "1" => DebugLevel::G1,
             "2" => DebugLevel::G2,
             "3" => DebugLevel::G3,
-            x => bail!("Invalid argument: -g{x}"),
+
+            // There are other -g options such as `-gdwarf`, we pass those through
+            // without touching them.
+            _ => return Ok(false),
         };
         Ok(true)
     } else if arg == "-fwasm-exceptions" {
@@ -864,7 +870,7 @@ mod tests {
     fn test_update_build_settings_from_arg() {
         let mut bs = BuildSettings {
             opt_level: OptLevel::O0,
-            debug_level: DebugLevel::None,
+            debug_level: DebugLevel::G0,
             use_wasm_opt: true,
         };
         let mut us = UserSettings::default();
