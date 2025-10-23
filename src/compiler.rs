@@ -794,7 +794,7 @@ fn update_build_settings_from_arg(
     if let Some(opt_level) = arg.strip_prefix("-O") {
         build_settings.opt_level = match opt_level {
             "0" => OptLevel::O0,
-            "1" => OptLevel::O1,
+            "" | "1" => OptLevel::O1,
             "2" => OptLevel::O2,
             "3" => OptLevel::O3,
             "4" => OptLevel::O4,
