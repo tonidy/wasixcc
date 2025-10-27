@@ -1,4 +1,14 @@
-use super::*;
+use std::{
+    collections::{HashMap, HashSet},
+    ffi::{OsStr, OsString},
+    path::{Path, PathBuf},
+    process::Command,
+    sync::LazyLock,
+};
+
+use anyhow::{bail, Context, Result};
+
+use crate::args::UserSettings;
 
 static CLANG_FLAGS_WITH_ARGS: LazyLock<HashSet<&str>> = LazyLock::new(|| {
     [
@@ -129,6 +139,19 @@ pub(crate) struct State {
     args: PreparedArgs,
     cxx: bool,
     temp_dir: PathBuf,
+}
+
+pub fn run_command(mut command: Command) -> Result<()> {
+    tracing::debug!("Executing build command: {command:?}");
+
+    let status = command
+        .status()
+        .with_context(|| format!("Failed to run command: {command:?}"))?;
+    if !status.success() {
+        bail!("Command failed with status: {status}; the command was: {command:?}");
+    }
+
+    Ok(())
 }
 
 pub(crate) fn run(args: Vec<String>, mut user_settings: UserSettings, run_cxx: bool) -> Result<()> {
@@ -980,5 +1003,14 @@ mod tests {
 
         // Hopefully, you don't have a /yyy folder on your system...
         assert!(us.ensure_sysroot_location().is_err());
+    }
+
+    #[test]
+    fn test_run_command_success_and_failure() {
+        // assume 'true' and 'false' are available on PATH
+        run_command(Command::new("true")).unwrap();
+        let err = run_command(Command::new("false")).unwrap_err();
+        let msg = format!("{:?}", err);
+        assert!(msg.contains("Command failed"));
     }
 }

@@ -122,8 +122,8 @@ pub(crate) fn download_sysroot(
 #[cfg(target_os = "linux")]
 pub(crate) fn download_llvm(tag_spec: TagSpec, user_settings: &UserSettings) -> anyhow::Result<()> {
     let target_dir = match user_settings.llvm_location {
-        crate::LlvmLocation::DefaultPath(ref path)
-        | crate::LlvmLocation::UserProvided(ref path) => path,
+        crate::args::LlvmLocation::DefaultPath(ref path)
+        | crate::args::LlvmLocation::UserProvided(ref path) => path,
     };
 
     if !target_dir.exists() {

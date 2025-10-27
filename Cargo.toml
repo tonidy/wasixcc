@@ -1,23 +1,23 @@
 [package]
 name = "wasixcc"
-version = "0.2.4"
+version = "0.3.0-pre.1"
 edition = "2021"
 license = "MIT"
 repository = "https://github.com/wasix-org/wasixcc"
 description = "C/C++ compiler for the WASIX platform"
 
+# wasixccenv, the management tool for wasixcc, is the default executable
+# that handles installation etc., so we want that to be the default binary.
 [[bin]]
-name = "wasixcc"
-required-features = ["tracing-subscriber"]
+name = "wasixccenv"
+path = "src/main.rs"
 
 [dependencies]
 anyhow = "1.0.98"
 regex = "1.11.1"
 tempfile = "3.20.0"
 tracing = "0.1.41"
-tracing-subscriber = { version = "0.3.19", optional = true, features = [
-    "env-filter",
-] }
+tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 
 # Required for the sysroot download
 flate2 = "1.1.2"
@@ -30,6 +30,7 @@ reqwest = { version = "=0.12.22", features = ["blocking", "json"] }
 tower = "=0.5.2"
 tower-layer = "=0.3.3"
 tower-service = "=0.3.3"
+clap = { version = "4.5.50", features = ["derive", "wrap_help"] }
 
 [patch.crates-io]
 getrandom = { git = "https://github.com/wasix-org/getrandom", branch = "wasix-0.3.3" }
@@ -44,10 +45,6 @@ reqwest = { git = "https://github.com/wasix-org/reqwest", branch = "wasix-0.12.2
 tower = { git = "https://github.com/wasix-org/tower.git", branch = "wasix-0.5.2" }
 tower-layer = { git = "https://github.com/wasix-org/tower.git", branch = "wasix-0.5.2" }
 tower-service = { git = "https://github.com/wasix-org/tower.git", branch = "wasix-0.5.2" }
-
-[features]
-bin = ["tracing-subscriber"]
-tracing-subscriber = ["dep:tracing-subscriber"]
 
 [lints.rust]
 unexpected_cfgs = { level = "allow", check-cfg = [
