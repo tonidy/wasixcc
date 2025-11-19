@@ -14,6 +14,7 @@ enum WasixccCommand {
     InstallExecutables(PathBuf),
     DownloadSysroot(TagSpec),
     DownloadLlvm(TagSpec),
+    DownloadBinaryen(u32),
     DownloadAll,
     PrintSysroot,
     RunTool,
@@ -293,6 +294,20 @@ fn get_wasixcc_command(exe_name: &str) -> WasixccCommand {
                 WasixccCommand::DownloadLlvm(tag_spec)
             }
 
+            "--download-binaryen" => {
+                let version = match args.next() {
+                    Some(spec) => match u32::from_str(&spec) {
+                        Ok(x) => x,
+                        Err(e) => {
+                            eprintln!("{e}");
+                            std::process::exit(1);
+                        }
+                    },
+                    None => 124,
+                };
+                WasixccCommand::DownloadBinaryen(version)
+            }
+
             "--download-all" => WasixccCommand::DownloadAll,
 
             "--print-sysroot" => WasixccCommand::PrintSysroot,
@@ -323,9 +338,11 @@ fn run() -> Result<()> {
         WasixccCommand::InstallExecutables(path) => install_executables(path),
         WasixccCommand::DownloadSysroot(tag_spec) => wasixcc::download_sysroot(tag_spec),
         WasixccCommand::DownloadLlvm(tag_spec) => wasixcc::download_llvm(tag_spec),
+        WasixccCommand::DownloadBinaryen(version) => wasixcc::download_binaryen(version),
         WasixccCommand::DownloadAll => {
             wasixcc::download_llvm(TagSpec::Latest)?;
             wasixcc::download_sysroot(TagSpec::Latest)?;
+            wasixcc::download_binaryen(124)?;
             Ok(())
         }
         WasixccCommand::PrintSysroot => print_sysroot(),

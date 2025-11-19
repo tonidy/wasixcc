@@ -1,4 +1,4 @@
-use std::{fmt::Display, path::Path, str::FromStr};
+use std::{fmt::Display, fs, path::Path, str::FromStr};
 
 use anyhow::{bail, Context};
 use fs_extra::dir::CopyOptions;
@@ -182,7 +182,6 @@ pub(crate) fn download_llvm(tag_spec: TagSpec, user_settings: &UserSettings) -> 
 
     {
         use std::os::unix::fs::PermissionsExt;
-
         for entry in
             std::fs::read_dir(target_dir.join("bin")).context("Failed to read bin directory")?
         {
@@ -201,6 +200,109 @@ pub(crate) fn download_llvm(tag_spec: TagSpec, user_settings: &UserSettings) -> 
 
     eprintln!(
         "Downloaded LLVM asset '{}' to '{}'",
+        asset.name,
+        target_dir.display()
+    );
+
+    Ok(())
+}
+//124
+// TODO: support other operating systems in the future.
+pub(crate) fn download_binaryen(version: u32, user_settings: &UserSettings) -> anyhow::Result<()> {
+    let target_dir = match user_settings.binaryen_location {
+        crate::BinaryenLocation::DefaultPath(ref path)
+        | crate::BinaryenLocation::UserProvided(ref path) => path,
+    };
+
+    if !target_dir.exists() {
+        std::fs::create_dir_all(target_dir).with_context(|| {
+            format!(
+                "Failed to create binaryen directory at {}",
+                target_dir.display()
+            )
+        })?;
+    }
+    let target_dir = target_dir.to_path_buf();
+
+    let mut headers = HeaderMap::new();
+
+    // Use API token if specified via env var.
+    // Prevents 403 errors when IP is throttled by Github API.
+    let gh_token = std::env::var("GITHUB_TOKEN")
+        .ok()
+        .map(|x| x.trim().to_string())
+        .filter(|x| !x.is_empty());
+
+    if let Some(token) = gh_token {
+        headers.insert("authorization", format!("Bearer {token}").parse()?);
+    }
+
+    let client = reqwest::blocking::Client::builder()
+        .default_headers(headers)
+        .user_agent("wasixcc")
+        .build()?;
+
+    #[cfg(target_os = "linux")]
+    let target_os = "linux";
+    #[cfg(target_os = "macos")]
+    let target_os = "macos";
+    #[cfg(target_os = "windows")]
+    let target_os = "windows";
+    #[cfg(all(target_arch = "aarch64", target_os = "linux"))]
+    let target_arch = "aarch64";
+    #[cfg(all(target_arch = "aarch64", not(target_os = "linux")))]
+    let target_arch = "arm64";
+    #[cfg(target_arch = "x86_64")]
+    let target_arch = "x86_64";
+    let target = format!("{target_arch}-{target_os}");
+    let release_url = format!(
+        "https://github.com/WebAssembly/binaryen/releases/download/version_{version}/binaryen-version_{version}-{target}.tar.gz",
+    );
+
+    let asset_name = "binaryen.tar.gz";
+    let asset = GithubAsset {
+        name: asset_name.to_string(),
+        browser_download_url: release_url,
+    };
+
+    download_asset(&asset, &target_dir, &client)
+        .with_context(|| format!("Failed to download and unpack asset '{asset_name}'"))?;
+
+    // Move files from the binaryen-version_{version} to the binaryen target dir.
+    let entries = fs::read_dir(target_dir.join(format!("binaryen-version_{version}")))
+        .with_context(|| "Failed to read bin directory")?;
+    for entry in entries {
+        let entry = entry.with_context(|| "Failed to read bin directory entry")?;
+        let _ = fs::remove_dir_all(target_dir.join(entry.file_name()));
+        let _ = fs::remove_file(target_dir.join(entry.file_name()));
+        fs::rename(entry.path(), target_dir.join(entry.file_name()))
+            .with_context(|| "Failed to move binaryen file to target directory")?;
+    }
+    fs::remove_dir_all(target_dir.join(format!("binaryen-version_{version}")))
+        .with_context(|| "Failed to remove temporary binaryen directory")?;
+
+    {
+        use std::os::unix::fs::PermissionsExt;
+        eprintln!("Target dir: {}", target_dir.display());
+
+        for entry in std::fs::read_dir(target_dir.join(format!("bin")))
+            .context("Failed to read bin directory")?
+        {
+            let entry = entry.context("Failed to read bin directory entry")?;
+            if entry
+                .file_type()
+                .context("Failed to get file type of bin directory entry")?
+                .is_file()
+            {
+                let mut perms = entry.metadata()?.permissions();
+                perms.set_mode(perms.mode() | 0o110); // Set executable bits
+                std::fs::set_permissions(entry.path(), perms)?;
+            }
+        }
+    }
+
+    eprintln!(
+        "Downloaded binaryen asset '{}' to '{}'",
         asset.name,
         target_dir.display()
     );
