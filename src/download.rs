@@ -1,6 +1,7 @@
 use std::{fmt::Display, path::Path, str::FromStr};
 
 use anyhow::{bail, Context};
+use fs_extra::dir::CopyOptions;
 use reqwest::header::HeaderMap;
 
 use crate::UserSettings;
@@ -255,7 +256,6 @@ fn download_and_unpack_sysroot(
     let asset_dir_name = asset_dir_file_name
         .to_str()
         .context("Expected directory name to be valid UTF-8")?;
-
     let postfix = asset_dir_name
         .strip_prefix("wasix-sysroot")
         .with_context(|| {
@@ -300,7 +300,12 @@ fn move_dir(src: impl AsRef<Path>, dst: impl AsRef<Path>) -> anyhow::Result<()> 
         Ok(()) => Ok(()),
         Err(e) if e.kind() == std::io::ErrorKind::CrossesDevices => {
             // If the rename fails due to crossing device boundaries, copy the directory.
-            std::fs::copy(src, dst).context("Failed to copy directory")?;
+            fs_extra::dir::copy(
+                src,
+                dst,
+                &CopyOptions::new().overwrite(true).copy_inside(true),
+            )
+            .context("Failed to copy directory")?;
             std::fs::remove_dir_all(src).context("Failed to remove source directory")?;
             Ok(())
         }
