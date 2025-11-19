@@ -33,10 +33,10 @@ impl FromStr for TagSpec {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         if s == "latest" {
             Ok(TagSpec::Latest)
-        } else if s.starts_with('v') {
+        } else if s.starts_with('v') || s.starts_with("version_") {
             Ok(TagSpec::Tag(s.to_string()))
         } else {
-            bail!("Invalid tag specification: `{s}`. Use 'latest' or a tag starting with 'v'.");
+            bail!("Invalid tag specification: `{s}`. Use 'latest', a tag starting with 'v', or 'version_XXX'.");
         }
     }
 }
