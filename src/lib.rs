@@ -192,7 +192,7 @@ pub fn download_sysroot(tag_spec: TagSpec) -> Result<()> {
     download::download_sysroot(tag_spec, &user_settings)
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 pub fn download_llvm(tag_spec: TagSpec) -> Result<()> {
     tracing::info!("Downloading LLVM: {:?}", tag_spec);
 
@@ -200,9 +200,9 @@ pub fn download_llvm(tag_spec: TagSpec) -> Result<()> {
     download::download_llvm(tag_spec, &user_settings)
 }
 
-#[cfg(not(target_os = "linux"))]
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
 pub fn download_llvm(_tag_spec: TagSpec) -> Result<()> {
-    bail!("LLVM download is only supported on Linux");
+    bail!("LLVM download is only supported on Linux and macOS");
 }
 
 fn separate_user_settings_args(args: Vec<String>) -> (Vec<String>, Vec<String>) {

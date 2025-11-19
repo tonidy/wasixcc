@@ -25,6 +25,35 @@ pub enum TagSpec {
     Tag(String),
 }
 
+fn get_llvm_asset_name() -> &'static str {
+    #[cfg(target_os = "linux")]
+    {
+        if cfg!(target_arch = "x86_64") {
+            "LLVM-Linux-x86_64.tar.gz"
+        } else {
+            // Add more Linux architectures as needed
+            unimplemented!("LLVM download for Linux on {} is not supported", 
+                          std::env::consts::ARCH)
+        }
+    }
+    
+    #[cfg(target_os = "macos")]
+    {
+        // LLVM for macOS only supports aarch64
+        if cfg!(target_arch = "aarch64") {
+            "LLVM-MacOS-aarch64.tar.gz"
+        } else {
+            unimplemented!("LLVM download for macOS on {} is not supported (only aarch64 is supported)", 
+                          std::env::consts::ARCH)
+        }
+    }
+    
+    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+    {
+        unimplemented!("LLVM download for {} is not supported", std::env::consts::OS)
+    }
+}
+
 impl FromStr for TagSpec {
     type Err = anyhow::Error;
 
@@ -119,7 +148,7 @@ pub(crate) fn download_sysroot(
 }
 
 // TODO: support other operating systems in the future.
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 pub(crate) fn download_llvm(tag_spec: TagSpec, user_settings: &UserSettings) -> anyhow::Result<()> {
     let target_dir = match user_settings.llvm_location {
         crate::LlvmLocation::DefaultPath(ref path)
@@ -169,7 +198,7 @@ pub(crate) fn download_llvm(tag_spec: TagSpec, user_settings: &UserSettings) -> 
         .json()
         .context("Could not deserialize release info")?;
 
-    let asset_name = "LLVM-Linux-x86_64.tar.gz";
+    let asset_name = get_llvm_asset_name();
     let asset = release
         .assets
         .iter()
