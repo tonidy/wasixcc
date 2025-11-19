@@ -259,11 +259,11 @@ pub fn download_llvm(_tag_spec: TagSpec) -> Result<()> {
     bail!("LLVM download is only supported on Linux");
 }
 
-pub fn download_binaryen(version: u32) -> Result<()> {
-    tracing::info!("Downloading binaryen: {:?}", version);
+pub fn download_binaryen(tag_spec: TagSpec) -> Result<()> {
+    tracing::info!("Downloading binaryen: {:?}", tag_spec);
 
     let (_, user_settings) = get_args_and_user_settings()?;
-    download::download_binaryen(version, &user_settings)
+    download::download_binaryen(tag_spec, &user_settings)
 }
 
 fn separate_user_settings_args(args: Vec<String>) -> (Vec<String>, Vec<String>) {
