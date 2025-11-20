@@ -55,6 +55,59 @@ impl Default for LlvmLocation {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum BinaryenLocation {
+    UserProvided(PathBuf),
+    DefaultPath(PathBuf),
+}
+
+impl BinaryenLocation {
+    pub fn get_tool_path(&self, tool: &str) -> PathBuf {
+        match self {
+            // Never override a user-provided path...
+            Self::UserProvided(path) => path.join("bin").join(tool),
+
+            // ... but a default path with fallbacks is generally acceptable.
+            Self::DefaultPath(path) => {
+                if path.join("bin").exists() {
+                    path.join("bin").join(tool)
+                } else {
+                    // Default to running system binaryen if the custom toolchain is not
+                    // installed.
+                    tracing::warn!(
+                        default_path = ?path.display(),
+                        "No binaryen location specified and no binaryen installation found in \
+                        default path. Using system binaryen. Output may be broken.\
+                        Use `wasixcc --download-binaryen` to download a compatible version."
+                    );
+                    PathBuf::from(tool)
+                }
+            }
+        }
+    }
+    pub fn get_bin_path(&self) -> Option<PathBuf> {
+        match self {
+            Self::UserProvided(path) => Some(path.join("bin")),
+            Self::DefaultPath(path) => {
+                if path.join("bin").exists() {
+                    Some(path.join("bin"))
+                } else {
+                    // Default to running system binaryen if the custom toolchain is not
+                    // installed.
+                    None
+                }
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+impl Default for BinaryenLocation {
+    fn default() -> Self {
+        BinaryenLocation::DefaultPath(PathBuf::new())
+    }
+}
+
 /// Settings provided by user through env vars or -s flags. Some can be overridden by
 /// compiler flags; e.g. `-fno-wasm-exceptions` takes priority over `-sWASM_EXCEPTIONS=1`.
 #[derive(Debug)]
@@ -63,6 +116,7 @@ struct UserSettings {
     sysroot_location: Option<PathBuf>,          // key name: SYSROOT
     sysroot_prefix: PathBuf,                    // key name: SYSROOT_PREFIX
     llvm_location: LlvmLocation,                // key name: LLVM_LOCATION
+    binaryen_location: BinaryenLocation,        // key name: BINARYEN_LOCATION
     extra_compiler_flags: Vec<String>,          // key name: COMPILER_FLAGS
     extra_compiler_post_flags: Vec<String>,     // key name: COMPILER_POST_FLAGS
     extra_compiler_flags_c: Vec<String>,        // key name: COMPILER_FLAGS_C
@@ -205,6 +259,13 @@ pub fn download_llvm(_tag_spec: TagSpec) -> Result<()> {
     bail!("LLVM download is only supported on Linux");
 }
 
+pub fn download_binaryen(tag_spec: TagSpec) -> Result<()> {
+    tracing::info!("Downloading binaryen: {:?}", tag_spec);
+
+    let (_, user_settings) = get_args_and_user_settings()?;
+    download::download_binaryen(tag_spec, &user_settings)
+}
+
 fn separate_user_settings_args(args: Vec<String>) -> (Vec<String>, Vec<String>) {
     let mut seen_dash_dash = false;
     let mut settings_args = Vec::new();
@@ -232,6 +293,15 @@ fn gather_user_settings(args: &[String]) -> Result<UserSettings> {
             std::env::home_dir()
                 .map(|home| home.join(".wasixcc/llvm"))
                 .unwrap_or_else(|| PathBuf::from("/lib/wasixcc/llvm")),
+        ),
+    };
+
+    let binaryen_location = match try_get_user_setting_value("BINARYEN_LOCATION", args)? {
+        Some(path) => BinaryenLocation::UserProvided(PathBuf::from(path)),
+        None => BinaryenLocation::DefaultPath(
+            std::env::home_dir()
+                .map(|home| home.join(".wasixcc/binaryen"))
+                .unwrap_or_else(|| PathBuf::from("/lib/wasixcc/binaryen")),
         ),
     };
 
@@ -353,6 +423,7 @@ fn gather_user_settings(args: &[String]) -> Result<UserSettings> {
         sysroot_location: sysroot_location.map(Into::into),
         sysroot_prefix,
         llvm_location,
+        binaryen_location,
         extra_compiler_flags,
         extra_compiler_post_flags,
         extra_compiler_flags_c,

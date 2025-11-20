@@ -1,4 +1,4 @@
-use std::{fmt::Display, path::Path, str::FromStr};
+use std::{fmt::Display, fs, path::Path, str::FromStr};
 
 use anyhow::{bail, Context};
 use fs_extra::dir::CopyOptions;
@@ -8,6 +8,7 @@ use crate::UserSettings;
 
 const LLVM_REPO: &str = "wasix-org/llvm-project";
 const SYSROOT_REPO: &str = "wasix-org/wasix-libc";
+const BINARYEN_REPO: &str = "WebAssembly/binaryen";
 
 #[derive(serde::Deserialize)]
 struct GithubReleaseData {
@@ -32,10 +33,10 @@ impl FromStr for TagSpec {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         if s == "latest" {
             Ok(TagSpec::Latest)
-        } else if s.starts_with('v') {
+        } else if s.starts_with('v') || s.starts_with("version_") {
             Ok(TagSpec::Tag(s.to_string()))
         } else {
-            bail!("Invalid tag specification: `{s}`. Use 'latest' or a tag starting with 'v'.");
+            bail!("Invalid tag specification: `{s}`. Use 'latest', a tag starting with 'v', or 'version_XXX'.");
         }
     }
 }
@@ -182,7 +183,6 @@ pub(crate) fn download_llvm(tag_spec: TagSpec, user_settings: &UserSettings) -> 
 
     {
         use std::os::unix::fs::PermissionsExt;
-
         for entry in
             std::fs::read_dir(target_dir.join("bin")).context("Failed to read bin directory")?
         {
@@ -201,6 +201,130 @@ pub(crate) fn download_llvm(tag_spec: TagSpec, user_settings: &UserSettings) -> 
 
     eprintln!(
         "Downloaded LLVM asset '{}' to '{}'",
+        asset.name,
+        target_dir.display()
+    );
+
+    Ok(())
+}
+// TODO: support other operating systems in the future.
+pub(crate) fn download_binaryen(tag_spec: TagSpec, user_settings: &UserSettings) -> anyhow::Result<()> {
+    let target_dir = match user_settings.binaryen_location {
+        crate::BinaryenLocation::DefaultPath(ref path)
+        | crate::BinaryenLocation::UserProvided(ref path) => path,
+    };
+
+    if !target_dir.exists() {
+        std::fs::create_dir_all(target_dir).with_context(|| {
+            format!(
+                "Failed to create binaryen directory at {}",
+                target_dir.display()
+            )
+        })?;
+    }
+    let target_dir = target_dir.to_path_buf();
+
+    let mut headers = HeaderMap::new();
+
+    // Use API token if specified via env var.
+    // Prevents 403 errors when IP is throttled by Github API.
+    let gh_token = std::env::var("GITHUB_TOKEN")
+        .ok()
+        .map(|x| x.trim().to_string())
+        .filter(|x| !x.is_empty());
+
+    if let Some(token) = gh_token {
+        headers.insert("authorization", format!("Bearer {token}").parse()?);
+    }
+
+    let client = reqwest::blocking::Client::builder()
+        .default_headers(headers)
+        .user_agent("wasixcc")
+        .build()?;
+
+    let release_url = format!(
+        "https://api.github.com/repos/{BINARYEN_REPO}/releases/{}",
+        tag_spec.display_github_url_postfix()
+    );
+
+    eprintln!("Retrieving release info from {release_url} ...");
+
+    let release: GithubReleaseData = client
+        .get(&release_url)
+        .send()?
+        .error_for_status()
+        .context("Could not download release info")?
+        .json()
+        .context("Could not deserialize release info")?;
+
+    #[cfg(target_os = "linux")]
+    let target_os = "linux";
+    #[cfg(target_os = "macos")]
+    let target_os = "macos";
+    #[cfg(target_os = "windows")]
+    let target_os = "windows";
+    #[cfg(all(target_arch = "aarch64", target_os = "linux"))]
+    let target_arch = "aarch64";
+    #[cfg(all(target_arch = "aarch64", not(target_os = "linux")))]
+    let target_arch = "arm64";
+    #[cfg(target_arch = "x86_64")]
+    let target_arch = "x86_64";
+    let target = format!("{target_arch}-{target_os}");
+
+    // Find the asset that matches our platform
+    // Asset names are like: binaryen-version_124-x86_64-linux.tar.gz
+    let asset_pattern = format!("-{}.tar.gz", target);
+    let asset = release
+        .assets
+        .iter()
+        .find(|a| a.name.ends_with(&asset_pattern))
+        .with_context(|| format!("Could not find binaryen asset for platform '{target}' in release"))?;
+
+    download_asset(asset, &target_dir, &client)
+        .with_context(|| format!("Failed to download and unpack asset '{}'", asset.name))?;
+
+    // Extract version from the asset name to know the directory name
+    // Asset name format: binaryen-version_124-x86_64-linux.tar.gz
+    let version_str = asset.name
+        .strip_prefix("binaryen-version_")
+        .and_then(|s| s.split('-').next())
+        .with_context(|| format!("Could not extract version from asset name '{}'", asset.name))?;
+
+    // Move files from the binaryen-version_{version} to the binaryen target dir.
+    let entries = fs::read_dir(target_dir.join(format!("binaryen-version_{}", version_str)))
+        .with_context(|| "Failed to read bin directory")?;
+    for entry in entries {
+        let entry = entry.with_context(|| "Failed to read bin directory entry")?;
+        let _ = fs::remove_dir_all(target_dir.join(entry.file_name()));
+        let _ = fs::remove_file(target_dir.join(entry.file_name()));
+        fs::rename(entry.path(), target_dir.join(entry.file_name()))
+            .with_context(|| "Failed to move binaryen file to target directory")?;
+    }
+    fs::remove_dir_all(target_dir.join(format!("binaryen-version_{}", version_str)))
+        .with_context(|| "Failed to remove temporary binaryen directory")?;
+
+    {
+        use std::os::unix::fs::PermissionsExt;
+        eprintln!("Target dir: {}", target_dir.display());
+
+        for entry in std::fs::read_dir(target_dir.join(format!("bin")))
+            .context("Failed to read bin directory")?
+        {
+            let entry = entry.context("Failed to read bin directory entry")?;
+            if entry
+                .file_type()
+                .context("Failed to get file type of bin directory entry")?
+                .is_file()
+            {
+                let mut perms = entry.metadata()?.permissions();
+                perms.set_mode(perms.mode() | 0o110); // Set executable bits
+                std::fs::set_permissions(entry.path(), perms)?;
+            }
+        }
+    }
+
+    eprintln!(
+        "Downloaded binaryen asset '{}' to '{}'",
         asset.name,
         target_dir.display()
     );
