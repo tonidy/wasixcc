@@ -1,3 +1,5 @@
+use std::{env, path::absolute};
+
 use super::*;
 
 static CLANG_FLAGS_WITH_ARGS: LazyLock<HashSet<&str>> = LazyLock::new(|| {
@@ -150,6 +152,18 @@ pub(crate) fn run(args: Vec<String>, mut user_settings: UserSettings, run_cxx: b
         }));
         command.args(original_args);
         command.args([OsStr::new("--target=wasm32-wasi")]);
+
+        let binaryen_bin_path = user_settings.binaryen_location.get_bin_path();
+        if let Some(binaryen_bin_path) = binaryen_bin_path {
+            command.env(
+                "PATH",
+                format!(
+                    "{}:{}",
+                    absolute(binaryen_bin_path).unwrap().display(),
+                    env::var("PATH").unwrap_or_default()
+                ),
+            );
+        }
         return run_command(command);
     }
 
@@ -254,6 +268,16 @@ fn compile_inputs(state: &mut State) -> Result<()> {
         .user_settings
         .llvm_location
         .get_tool_path(if state.cxx { "clang++" } else { "clang" });
+    let binaryen_bin_path = state.user_settings.binaryen_location.get_bin_path();
+    let path_env = if let Some(binaryen_bin_path) = &binaryen_bin_path {
+        format!(
+            "{}:{}",
+            absolute(binaryen_bin_path).unwrap().display(),
+            env::var("PATH").unwrap_or_default()
+        )
+    } else {
+        env::var("PATH").unwrap_or_default()
+    };
 
     let sysroot_path = state.user_settings.ensure_sysroot_location()?;
 
@@ -311,6 +335,7 @@ fn compile_inputs(state: &mut State) -> Result<()> {
 
         for input in &state.args.compiler_inputs {
             let mut command = Command::new(&compiler_path);
+            command.env("PATH", &path_env);
 
             command.args(&command_args);
 
@@ -334,6 +359,7 @@ fn compile_inputs(state: &mut State) -> Result<()> {
         // If we're not linking, just push all inputs to clang to get one output
 
         let mut command = Command::new(&compiler_path);
+        command.env("PATH", &path_env);
 
         command.args(&command_args);
         command.args(&state.args.compiler_inputs);
@@ -488,7 +514,12 @@ fn link_inputs(state: &State) -> Result<()> {
 }
 
 fn run_wasm_opt(state: &State) -> Result<()> {
-    let mut command = Command::new("wasm-opt");
+    let mut command = Command::new(
+        state
+            .user_settings
+            .binaryen_location
+            .get_tool_path("wasm-opt"),
+    );
 
     if !state.user_settings.wasm_opt_suppress_default {
         if state.user_settings.wasm_exceptions {
