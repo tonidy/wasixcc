@@ -27,32 +27,14 @@ pub enum TagSpec {
     Tag(String),
 }
 
-fn get_llvm_asset_name() -> &'static str {
-    #[cfg(target_os = "linux")]
-    {
-        if cfg!(target_arch = "x86_64") {
-            "LLVM-Linux-x86_64.tar.gz"
-        } else {
-            // Add more Linux architectures as needed
-            unimplemented!("LLVM download for Linux on {} is not supported", 
-                          std::env::consts::ARCH)
+fn get_llvm_asset_name() -> anyhow::Result<&'static str> {
+    match (std::env::consts::OS, std::env::consts::ARCH) {
+        ("linux", "x86_64") => Ok("LLVM-Linux-x86_64.tar.gz"),
+        ("linux", "aarch64") => Ok("LLVM-Linux-aarch64.tar.gz"),
+        ("macos", "aarch64") => Ok("LLVM-MacOS-aarch64.tar.gz"),
+        (os, arch) => {
+            bail!("LLVM download for {} on {} is not supported", os, arch)
         }
-    }
-    
-    #[cfg(target_os = "macos")]
-    {
-        // LLVM for macOS only supports aarch64
-        if cfg!(target_arch = "aarch64") {
-            "LLVM-MacOS-aarch64.tar.gz"
-        } else {
-            unimplemented!("LLVM download for macOS on {} is not supported (only aarch64 is supported)", 
-                          std::env::consts::ARCH)
-        }
-    }
-    
-    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
-    {
-        unimplemented!("LLVM download for {} is not supported", std::env::consts::OS)
     }
 }
 
@@ -149,9 +131,10 @@ pub(crate) fn download_sysroot(
     Ok(())
 }
 
-// TODO: support other operating systems in the future.
-#[cfg(any(target_os = "linux", target_os = "macos"))]
 pub(crate) fn download_llvm(tag_spec: TagSpec, user_settings: &UserSettings) -> anyhow::Result<()> {
+    // Determine the asset name based on OS and architecture
+    let asset_name = get_llvm_asset_name()?;
+
     let target_dir = match user_settings.llvm_location {
         crate::LlvmLocation::DefaultPath(ref path)
         | crate::LlvmLocation::UserProvided(ref path) => path,
@@ -200,7 +183,6 @@ pub(crate) fn download_llvm(tag_spec: TagSpec, user_settings: &UserSettings) -> 
         .json()
         .context("Could not deserialize release info")?;
 
-    let asset_name = get_llvm_asset_name();
     let asset = release
         .assets
         .iter()
@@ -237,7 +219,10 @@ pub(crate) fn download_llvm(tag_spec: TagSpec, user_settings: &UserSettings) -> 
     Ok(())
 }
 // TODO: support other operating systems in the future.
-pub(crate) fn download_binaryen(tag_spec: TagSpec, user_settings: &UserSettings) -> anyhow::Result<()> {
+pub(crate) fn download_binaryen(
+    tag_spec: TagSpec,
+    user_settings: &UserSettings,
+) -> anyhow::Result<()> {
     let target_dir = match user_settings.binaryen_location {
         crate::BinaryenLocation::DefaultPath(ref path)
         | crate::BinaryenLocation::UserProvided(ref path) => path,
@@ -307,14 +292,17 @@ pub(crate) fn download_binaryen(tag_spec: TagSpec, user_settings: &UserSettings)
         .assets
         .iter()
         .find(|a| a.name.ends_with(&asset_pattern))
-        .with_context(|| format!("Could not find binaryen asset for platform '{target}' in release"))?;
+        .with_context(|| {
+            format!("Could not find binaryen asset for platform '{target}' in release")
+        })?;
 
     download_asset(asset, &target_dir, &client)
         .with_context(|| format!("Failed to download and unpack asset '{}'", asset.name))?;
 
     // Extract version from the asset name to know the directory name
     // Asset name format: binaryen-version_124-x86_64-linux.tar.gz
-    let version_str = asset.name
+    let version_str = asset
+        .name
         .strip_prefix("binaryen-version_")
         .and_then(|s| s.split('-').next())
         .with_context(|| format!("Could not extract version from asset name '{}'", asset.name))?;
