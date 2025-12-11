@@ -23,14 +23,17 @@ jobs:
           - target: aarch64-unknown-linux-gnu
             os: ubuntu-latest
             cross: true
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-latest
+            cross: true
+          - target: aarch64-unknown-linux-musl
+            os: ubuntu-latest
+            cross: true
           - target: aarch64-apple-darwin
             os: macos-15
             cross: false
           - target: x86_64-apple-darwin
             os: macos-15-intel
-            cross: false
-          - target: x86_64-pc-windows-msvc
-            os: windows-2025
             cross: false
     
     steps:
@@ -63,11 +66,7 @@ jobs:
         run: |
           BINARY_NAME="wasixcc"
           cd target/${{ matrix.target }}/release
-          if [[ "${{ matrix.target }}" == *"windows"* ]]; then
-            tar czf ${BINARY_NAME}-${{ matrix.target }}.tar.gz ${BINARY_NAME}.exe
-          else
-            tar czf ${BINARY_NAME}-${{ matrix.target }}.tar.gz ${BINARY_NAME}
-          fi
+          tar czf ${BINARY_NAME}-${{ matrix.target }}.tar.gz ${BINARY_NAME}
           mv ${BINARY_NAME}-${{ matrix.target }}.tar.gz ../../../
       
       - name: Upload artifact
