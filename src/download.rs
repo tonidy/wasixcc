@@ -218,7 +218,7 @@ pub(crate) fn download_llvm(tag_spec: TagSpec, user_settings: &UserSettings) -> 
 
     Ok(())
 }
-// TODO: support other operating systems in the future.
+
 pub(crate) fn download_binaryen(
     tag_spec: TagSpec,
     user_settings: &UserSettings,
