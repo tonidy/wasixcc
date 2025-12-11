@@ -38,6 +38,18 @@ fn get_llvm_asset_name() -> anyhow::Result<&'static str> {
     }
 }
 
+fn get_binaryen_asset_suffix() -> anyhow::Result<&'static str> {
+    match (std::env::consts::OS, std::env::consts::ARCH) {
+        ("linux", "x86_64") => Ok("-x86_64-linux.tar.gz"),
+        ("linux", "aarch64") => Ok("-aarch64-linux.tar.gz"),
+        ("macos", "x86_64") => Ok("-x86_64-macos.tar.gz"),
+        ("macos", "aarch64") => Ok("-arm64-macos.tar.gz"),
+        (os, arch) => {
+            bail!("Binaryen download for {} on {} is not supported", os, arch)
+        }
+    }
+}
+
 impl FromStr for TagSpec {
     type Err = anyhow::Error;
 
@@ -223,6 +235,8 @@ pub(crate) fn download_binaryen(
     tag_spec: TagSpec,
     user_settings: &UserSettings,
 ) -> anyhow::Result<()> {
+    let asset_suffix = get_binaryen_asset_suffix()?;
+
     let target_dir = match user_settings.binaryen_location {
         crate::BinaryenLocation::DefaultPath(ref path)
         | crate::BinaryenLocation::UserProvided(ref path) => path,
@@ -271,29 +285,14 @@ pub(crate) fn download_binaryen(
         .json()
         .context("Could not deserialize release info")?;
 
-    #[cfg(target_os = "linux")]
-    let target_os = "linux";
-    #[cfg(target_os = "macos")]
-    let target_os = "macos";
-    #[cfg(target_os = "windows")]
-    let target_os = "windows";
-    #[cfg(all(target_arch = "aarch64", target_os = "linux"))]
-    let target_arch = "aarch64";
-    #[cfg(all(target_arch = "aarch64", not(target_os = "linux")))]
-    let target_arch = "arm64";
-    #[cfg(target_arch = "x86_64")]
-    let target_arch = "x86_64";
-    let target = format!("{target_arch}-{target_os}");
-
     // Find the asset that matches our platform
     // Asset names are like: binaryen-version_124-x86_64-linux.tar.gz
-    let asset_pattern = format!("-{}.tar.gz", target);
     let asset = release
         .assets
         .iter()
-        .find(|a| a.name.ends_with(&asset_pattern))
+        .find(|a| a.name.ends_with(&asset_suffix))
         .with_context(|| {
-            format!("Could not find binaryen asset for platform '{target}' in release")
+            format!("Could not find binaryen asset for the current platform in release")
         })?;
 
     download_asset(asset, &target_dir, &client)
