@@ -24,7 +24,7 @@ jobs:
             os: ubuntu-latest
             cross: true
           - target: aarch64-apple-darwin
-            os: macos-latest
+            os: macos-14
             cross: false
     
     steps:
@@ -35,18 +35,22 @@ jobs:
         with:
           targets: ${{ matrix.target }}
       
+      - name: Install cargo-binstall
+        if: matrix.cross
+        uses: cargo-bins/cargo-binstall@main
+      
       - name: Install cross-compilation tools
         if: matrix.cross
         run: |
-          cargo install cross
+          cargo binstall --no-confirm cross
       
-      - name: Build binary
-        run: |
-          if [ "${{ matrix.cross }}" = "true" ]; then
-            cross build --release --target ${{ matrix.target }} -F bin --bin wasixcc
-          else
-            cargo build --release --target ${{ matrix.target }} -F bin --bin wasixcc
-          fi
+      - name: Build binary (cross)
+        if: matrix.cross
+        run: cross build --release --target ${{ matrix.target }} -F bin --bin wasixcc
+
+      - name: Build binary (cargo)
+        if: ${{ !matrix.cross }}
+        run: cargo build --release --target ${{ matrix.target }} -F bin --bin wasixcc
       
       - name: Package binary
         run: |
