@@ -49,7 +49,7 @@ jobs:
         run: cross build --release --target ${{ matrix.target }} -F bin --bin wasixcc
 
       - name: Build binary (cargo)
-        if: ${{ !matrix.cross }}
+        if: "!matrix.cross"
         run: cargo build --release --target ${{ matrix.target }} -F bin --bin wasixcc
       
       - name: Package binary
