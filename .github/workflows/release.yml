@@ -27,7 +27,7 @@ jobs:
             os: macos-15
             cross: false
           - target: x86_64-apple-darwin
-            os: macos-15-large
+            os: macos-15-intel
             cross: false
           - target: x86_64-pc-windows-msvc
             os: windows-2025
