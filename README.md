@@ -22,7 +22,11 @@ flags for the WASIX platform.
    ```bash
    cargo install wasixcc -F bin
    ```
-   - Alternatively, clone and build wasixcc from this repo:
+   - Alternatively, if you have [cargo-binstall](https://github.com/cargo-bins/cargo-binstall), you can install pre-built binaries:
+     ```bash
+     cargo binstall wasixcc
+     ```
+   - Or clone and build wasixcc from this repo:
      ```bash
      git clone https://github.com/wasix-org/wasixcc
      cd wasixcc
