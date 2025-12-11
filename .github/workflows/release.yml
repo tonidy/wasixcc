@@ -38,7 +38,7 @@ jobs:
       - name: Install cross-compilation tools
         if: matrix.cross
         run: |
-          cargo install cross --git https://github.com/cross-rs/cross
+          cargo install cross
       
       - name: Build binary
         run: |
@@ -50,9 +50,10 @@ jobs:
       
       - name: Package binary
         run: |
+          BINARY_NAME="wasixcc"
           cd target/${{ matrix.target }}/release
-          tar czf wasixcc-${{ matrix.target }}.tar.gz wasixcc
-          mv wasixcc-${{ matrix.target }}.tar.gz ../../../
+          tar czf ${BINARY_NAME}-${{ matrix.target }}.tar.gz ${BINARY_NAME}
+          mv ${BINARY_NAME}-${{ matrix.target }}.tar.gz ../../../
       
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -74,7 +75,7 @@ jobs:
       
       - name: Move artifacts to root
         run: |
-          mv artifacts/*/*.tar.gz .
+          find artifacts -name '*.tar.gz' -exec mv {} . \;
       
       - name: Create Release
         uses: softprops/action-gh-release@v1
